@@ -294,7 +294,7 @@
     </div>
     <button class="btn" id="loginBtn">دخول</button>
     <div class="errMsg" id="loginErr"></div>
-    <div class="hint">أول مرة تدخل بيها؟ استخدم admin / 1234 ثم غيّرها من الإعدادات.</div>
+    <div class="hint">إعداد وتصميم م/أحمد ربيع<br>تحت إشراف المدير العام م/عبدالله أحمد</div>
   </div>
 </div>
 
@@ -319,6 +319,47 @@
         <h2 class="display">الخانات الرئيسية</h2>
       </div>
       <div class="grid" id="dashGrid"></div>
+
+      <div class="panel" style="margin-top:20px;">
+        <h4>📊 التقرير اليومي</h4>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">شوف كل حاجة حصلت في أي يوم — النهاردة أو أي يوم فات</p>
+        <button class="btn" id="openReportBtn" style="max-width:220px;">فتح التقرير اليومي</button>
+      </div>
+    </div>
+
+    <!-- Daily report view -->
+    <div id="reportView" style="display:none;">
+      <div class="pageTitle">
+        <div>
+          <button class="back" id="reportBackBtn">→ رجوع للوحة الرئيسية</button>
+          <h2 class="display" style="margin-top:8px;">📊 التقرير اليومي</h2>
+        </div>
+        <input type="date" id="reportDate">
+      </div>
+
+      <div class="summary" id="reportSummary"></div>
+      <div class="panel" id="reportBySection"></div>
+
+      <div class="panel" style="padding:0;overflow-x:auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>الخانة</th>
+              <th>الصنف</th>
+              <th>الوزن (جم)</th>
+              <th>العدد</th>
+              <th>الباركود</th>
+              <th>بواسطة</th>
+              <th>ملاحظات</th>
+            </tr>
+          </thead>
+          <tbody id="reportTbody"></tbody>
+        </table>
+        <div class="emptyState" id="reportEmpty" style="display:none;">
+          <span class="ico">◌</span>
+          لا توجد قيود في هذا اليوم
+        </div>
+      </div>
     </div>
 
     <!-- Section view -->
@@ -350,9 +391,25 @@
             <label>اسم الصنف (لو أخرى)</label>
             <input type="text" id="f_custom" placeholder="اكتب اسم الصنف">
           </div>
-          <div class="field" style="margin-bottom:0;">
+          <div class="field" style="margin-bottom:0;" id="f_weight_normal_wrap">
             <label>الوزن (جرام)</label>
             <input type="number" step="0.001" id="f_weight" placeholder="مثال: 8.000">
+          </div>
+          <div class="field" style="margin-bottom:0;display:none;" id="f_weight_tola_wrap">
+            <label>وزن التولة</label>
+            <select id="f_weight_tola">
+              <option value="1">1 جرام</option>
+              <option value="2.5">2.5 جرام</option>
+              <option value="5">5 جرام</option>
+              <option value="10">10 جرام</option>
+              <option value="20">20 جرام</option>
+              <option value="31.10">31.10 جرام</option>
+              <option value="50">50 جرام</option>
+              <option value="100">100 جرام</option>
+              <option value="250">250 جرام</option>
+              <option value="500">500 جرام</option>
+              <option value="1000">1 كيلو (1000 جرام)</option>
+            </select>
           </div>
           <div class="field" style="margin-bottom:0;">
             <label>العدد</label>
@@ -395,7 +452,7 @@
     </div>
   </main>
 
-  <footer class="foot">GBI · نظام المتابعة المركزية — البيانات محفوظة تلقائيًا</footer>
+  <footer class="foot">GBI · نظام المتابعة المركزية — البيانات محفوظة تلقائيًا<br>إعداد وتصميم م/أحمد ربيع — تحت إشراف المدير العام م/عبدالله أحمد</footer>
 </div>
 
 <div class="toast" id="toast"><span class="tstamp">GBI</span><span id="toastMsg"></span></div>
@@ -429,7 +486,9 @@ const SECTIONS = [
   {key:'khaam',    name:'الخام',         icon:'▮', desc:'رصيد الذهب الخام'},
 ];
 const AUTH_KEY = 'gbi_auth_v1';
+const ROLE_LABELS = {admin:'أدمن', manager:'مدير', operator:'مشغل'};
 let currentUser = null;
+let currentRole = null;
 let currentSectionKey = null;
 let sectionCache = {}; // key -> array of entries
 const memoryDB = {}; // in-memory fallback if persistent storage is unavailable
@@ -450,18 +509,25 @@ function showToast(msg){
 }
 
 /* ================= AUTH ================= */
+function defaultAuth(){
+  return {
+    admin:   {username:'admin',    password:'1234'},
+    manager: {username:'manager',  password:'1234'},
+    operator:{username:'operator', password:'1234'}
+  };
+}
 async function loadAuth(){
   try{
     if(!db) throw new Error('Firestore not available');
     const snap = await db.collection('meta').doc('auth').get();
     if(snap.exists) return snap.data();
-    const def = {username:'admin', password:'1234'};
+    const def = defaultAuth();
     await db.collection('meta').doc('auth').set(def);
     return def;
   }catch(e){
     console.warn('loadAuth fallback:', e);
     if(memoryDB[AUTH_KEY]) return JSON.parse(memoryDB[AUTH_KEY]);
-    const def = {username:'admin', password:'1234'};
+    const def = defaultAuth();
     memoryDB[AUTH_KEY] = JSON.stringify(def);
     return def;
   }
@@ -483,13 +549,19 @@ async function doLogin(){
   const p = $('passInput').value;
   $('loginErr').textContent = '';
   const auth = await loadAuth();
-  if(u === auth.username.trim() && p === auth.password){
+  let matchedRole = null;
+  for(const r of ['admin','manager','operator']){
+    if(auth[r] && u === auth[r].username.trim() && p === auth[r].password){ matchedRole = r; break; }
+  }
+  if(matchedRole){
     currentUser = u;
+    currentRole = matchedRole;
     $('loginSeal').classList.remove('stamp'); void $('loginSeal').offsetWidth; $('loginSeal').classList.add('stamp');
     setTimeout(async ()=>{
       $('loginScreen').style.display = 'none';
       $('app').style.display = 'flex';
-      $('userChip').textContent = 'مسجّل دخول: ' + currentUser;
+      $('userChip').textContent = ROLE_LABELS[currentRole] + ': ' + currentUser;
+      $('settingsBtn').style.display = currentRole === 'admin' ? 'inline-flex' : 'none';
       try{
         await renderDashboard();
       }catch(err){
@@ -504,20 +576,32 @@ async function doLogin(){
 
 $('logoutBtn').addEventListener('click', ()=>{
   currentUser = null;
+  currentRole = null;
   $('app').style.display = 'none';
   $('loginScreen').style.display = 'flex';
   $('userInput').value=''; $('passInput').value='';
 });
 
 $('settingsBtn').addEventListener('click', async ()=>{
+  if(currentRole !== 'admin'){
+    alert('تغيير بيانات الدخول متاح للأدمن فقط');
+    return;
+  }
+  const which = prompt('اكتب اسم الحساب اللي عايز تعدله بالظبط: admin أو manager أو operator', 'admin');
+  if(which === null) return;
+  const key = which.trim().toLowerCase();
+  if(!['admin','manager','operator'].includes(key)){ alert('اسم غير معروف — اكتب admin أو manager أو operator'); return; }
+
   const auth = await loadAuth();
-  const newUser = prompt('اسم المستخدم الجديد:', auth.username);
+  const current = auth[key] || {username:key, password:''};
+  const newUser = prompt('اسم المستخدم الجديد لحساب ' + ROLE_LABELS[key] + ':', current.username);
   if(newUser === null) return;
-  const newPass = prompt('كلمة المرور الجديدة:', auth.password);
+  const newPass = prompt('كلمة المرور الجديدة لحساب ' + ROLE_LABELS[key] + ':', current.password);
   if(newPass === null) return;
   if(!newUser.trim() || !newPass.trim()){ alert('البيانات لا يمكن أن تكون فارغة'); return; }
-  await saveAuth({username:newUser.trim(), password:newPass});
-  showToast('تم تحديث بيانات الدخول');
+  auth[key] = {username:newUser.trim(), password:newPass};
+  await saveAuth(auth);
+  showToast('تم تحديث بيانات ' + ROLE_LABELS[key]);
 });
 
 /* ================= DATA ================= */
@@ -565,21 +649,27 @@ async function renderDashboard(){
   }
   $('dashboardView').style.display = 'block';
   $('sectionView').style.display = 'none';
+  $('reportView').style.display = 'none';
 }
 
 /* ================= SECTION VIEW ================= */
 $('backBtn').addEventListener('click', renderDashboard);
 
 $('f_type').addEventListener('change', ()=>{
-  $('f_customWrap').style.display = $('f_type').value === 'أخرى' ? 'block' : 'none';
+  const t = $('f_type').value;
+  $('f_customWrap').style.display = t === 'أخرى' ? 'block' : 'none';
+  const isTola = t === 'توله';
+  $('f_weight_normal_wrap').style.display = isTola ? 'none' : 'block';
+  $('f_weight_tola_wrap').style.display = isTola ? 'block' : 'none';
 });
 
 $('searchInput').addEventListener('input', ()=>renderTable());
 
 $('addBtn').addEventListener('click', async ()=>{
   const type = $('f_type').value;
+  const isTola = type === 'توله';
   const custom = $('f_custom').value.trim();
-  const weight = parseFloat($('f_weight').value);
+  const weight = isTola ? parseFloat($('f_weight_tola').value) : parseFloat($('f_weight').value);
   const qty = parseInt($('f_qty').value) || 1;
   const barcode = $('f_barcode').value.trim();
   const notes = $('f_notes').value.trim();
@@ -587,17 +677,20 @@ $('addBtn').addEventListener('click', async ()=>{
   if(type === 'أخرى' && !custom){ alert('اكتب اسم الصنف'); return; }
   if(isNaN(weight) || weight <= 0){ alert('من فضلك أدخل وزن صحيح'); return; }
 
+  const now = new Date();
   const entry = {
     id: uid(),
     type: type === 'أخرى' ? custom : type,
     weight, qty, barcode, notes,
     date: todayStr(),
-    ts: Date.now()
+    dateISO: now.toISOString().slice(0,10),
+    by: currentRole,
+    ts: now.getTime()
   };
   sectionCache[currentSectionKey].unshift(entry);
   await persistSection(currentSectionKey);
 
-  $('f_weight').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
+  $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
   renderTable();
   showToast('تم تسجيل القيد بختم GBI');
 });
@@ -610,6 +703,7 @@ async function openSection(key){
   await loadSection(key);
   $('dashboardView').style.display = 'none';
   $('sectionView').style.display = 'block';
+  $('reportView').style.display = 'none';
   renderTable();
 }
 
@@ -668,6 +762,62 @@ function renderTable(){
       renderTable();
       showToast('تم حذف القيد');
     });
+  });
+}
+
+/* ================= DAILY REPORT ================= */
+$('openReportBtn').addEventListener('click', async ()=>{
+  $('reportDate').value = new Date().toISOString().slice(0,10);
+  $('dashboardView').style.display = 'none';
+  $('sectionView').style.display = 'none';
+  $('reportView').style.display = 'block';
+  await renderReport();
+});
+$('reportBackBtn').addEventListener('click', renderDashboard);
+$('reportDate').addEventListener('change', renderReport);
+
+async function renderReport(){
+  const dateISO = $('reportDate').value || new Date().toISOString().slice(0,10);
+  let all = [];
+  for(const s of SECTIONS){
+    let entries = [];
+    try{ entries = await loadSection(s.key); }catch(e){ console.warn('report load fail', s.key, e); }
+    (entries||[]).filter(e => e.dateISO === dateISO).forEach(e => all.push({...e, sectionName:s.name, sectionIcon:s.icon}));
+  }
+
+  const totalWeight = all.reduce((a,e)=>a + e.weight*e.qty, 0);
+  const totalQty = all.reduce((a,e)=>a + e.qty, 0);
+  $('reportSummary').innerHTML = `
+    <div class="sumBox"><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
+    <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
+    <div class="sumBox"><div class="n">${totalWeight.toFixed(3)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+  `;
+
+  let secHtml = '<h4>تفصيل حسب الخانة</h4><div class="summary">';
+  SECTIONS.forEach(s=>{
+    const secEntries = all.filter(e => e.sectionName === s.name);
+    const w = secEntries.reduce((a,e)=>a + e.weight*e.qty, 0);
+    const q = secEntries.reduce((a,e)=>a + e.qty, 0);
+    secHtml += `<div class="sumBox"><div class="n">${secEntries.length}</div><div class="l">${s.icon} ${s.name} — ${q} قطعة / ${w.toFixed(3)} جم</div></div>`;
+  });
+  secHtml += '</div>';
+  $('reportBySection').innerHTML = secHtml;
+
+  const tbody = $('reportTbody');
+  tbody.innerHTML = '';
+  $('reportEmpty').style.display = all.length ? 'none' : 'block';
+  all.sort((a,b)=>b.ts-a.ts).forEach(e=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td data-label="الخانة">${e.sectionIcon} ${e.sectionName}</td>
+      <td data-label="الصنف"><span class="tag">${e.type}</span></td>
+      <td data-label="الوزن">${e.weight.toFixed(3)}</td>
+      <td data-label="العدد">${e.qty}</td>
+      <td data-label="الباركود">${e.barcode || '—'}</td>
+      <td data-label="بواسطة">${ROLE_LABELS[e.by] || e.by || '—'}</td>
+      <td data-label="ملاحظات">${e.notes || '—'}</td>
+    `;
+    tbody.appendChild(tr);
   });
 }
 </script>
