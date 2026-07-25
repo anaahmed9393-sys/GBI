@@ -349,7 +349,10 @@
           <thead>
             <tr>
               <th>الخانة</th>
+              <th>السند</th>
+              <th>الساعة</th>
               <th>الصنف</th>
+              <th>العيار</th>
               <th>الوزن (جم)</th>
               <th>العدد</th>
               <th>الباركود</th>
@@ -377,6 +380,7 @@
       </div>
 
       <div class="summary" id="summaryStrip"></div>
+      <div id="movementBreakdown"></div>
 
       <div class="panel">
         <h4>إضافة قيد جديد</h4>
@@ -394,6 +398,14 @@
           <div class="field" style="margin-bottom:0;" id="f_customWrap" style="display:none;">
             <label>اسم الصنف (لو أخرى)</label>
             <input type="text" id="f_custom" placeholder="اكتب اسم الصنف">
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>رقم السند</label>
+            <input type="text" id="f_voucher" placeholder="اختياري">
+          </div>
+          <div class="field" style="margin-bottom:0;">
+            <label>الساعة</label>
+            <input type="time" id="f_time">
           </div>
           <div class="field" style="margin-bottom:0;" id="f_weight_normal_wrap">
             <label>الوزن (جرام)</label>
@@ -420,6 +432,29 @@
             <input type="number" step="1" id="f_qty" placeholder="مثال: 1" value="1">
           </div>
           <div class="field" style="margin-bottom:0;">
+            <label>العيار</label>
+            <input type="text" id="f_karat" placeholder="—" readonly>
+          </div>
+          <div class="field" style="margin-bottom:0;display:none;" id="f_movement_wrap">
+            <label>نوع الحركة (الدمغة)</label>
+            <select id="f_movement">
+              <option value="مسلم للدمغة">مسلم للدمغة</option>
+              <option value="وارد من الدمغة">وارد من الدمغة</option>
+            </select>
+          </div>
+          <div class="field" style="margin-bottom:0;display:none;" id="f_dulash_wrap">
+            <label>عدد الدلوش</label>
+            <input type="number" step="1" id="f_dulash" placeholder="اختياري">
+          </div>
+          <div class="field" style="margin-bottom:0;display:none;" id="f_gold9999_wrap">
+            <label>كمية الذهب الخام 999.9 (جم)</label>
+            <input type="number" step="0.001" id="f_gold9999" placeholder="اختياري">
+          </div>
+          <div class="field" style="margin-bottom:0;display:none;" id="f_gold875_wrap">
+            <label>كمية الذهب الخام 875 (جم)</label>
+            <input type="number" step="0.001" id="f_gold875" placeholder="اختياري">
+          </div>
+          <div class="field" style="margin-bottom:0;">
             <label>رقم الباركود</label>
             <input type="text" id="f_barcode" placeholder="اختياري">
           </div>
@@ -438,7 +473,10 @@
           <thead>
             <tr>
               <th>التاريخ</th>
+              <th>السند</th>
+              <th>الساعة</th>
               <th>الصنف</th>
+              <th>العيار</th>
               <th>الوزن (جم)</th>
               <th>العدد</th>
               <th>الباركود</th>
@@ -663,13 +701,21 @@ async function renderDashboard(){
 /* ================= SECTION VIEW ================= */
 $('backBtn').addEventListener('click', renderDashboard);
 
-$('f_type').addEventListener('change', ()=>{
+function karatForType(t){
+  if(t === 'توله') return 24;
+  if(t === 'جنيه' || t === 'نص جنيه' || t === 'ربع جنيه') return 21;
+  return '';
+}
+function applyTypeSelection(){
   const t = $('f_type').value;
   $('f_customWrap').style.display = t === 'أخرى' ? 'block' : 'none';
   const isTola = t === 'توله';
   $('f_weight_normal_wrap').style.display = isTola ? 'none' : 'block';
   $('f_weight_tola_wrap').style.display = isTola ? 'block' : 'none';
-});
+  const k = karatForType(t);
+  $('f_karat').value = k ? (k + ' عيار') : '';
+}
+$('f_type').addEventListener('change', applyTypeSelection);
 
 $('searchInput').addEventListener('input', ()=>renderTable());
 
@@ -677,8 +723,11 @@ $('addBtn').addEventListener('click', async ()=>{
   const type = $('f_type').value;
   const isTola = type === 'توله';
   const custom = $('f_custom').value.trim();
+  const voucher = $('f_voucher').value.trim();
+  const time = $('f_time').value;
   const weight = isTola ? parseFloat($('f_weight_tola').value) : parseFloat($('f_weight').value);
   const qty = parseInt($('f_qty').value) || 1;
+  const karat = karatForType(type);
   const barcode = $('f_barcode').value.trim();
   const notes = $('f_notes').value.trim();
 
@@ -689,16 +738,33 @@ $('addBtn').addEventListener('click', async ()=>{
   const entry = {
     id: uid(),
     type: type === 'أخرى' ? custom : type,
+    karat,
+    voucher, time,
     weight, qty, barcode, notes,
     date: todayStr(),
     dateISO: now.toISOString().slice(0,10),
     by: currentRole,
     ts: now.getTime()
   };
+
+  if(currentSectionKey === 'damgha'){
+    entry.movement = $('f_movement').value;
+  }
+  if(currentSectionKey === 'khaam'){
+    const dulash = parseFloat($('f_dulash').value);
+    const g9999 = parseFloat($('f_gold9999').value);
+    const g875 = parseFloat($('f_gold875').value);
+    if(!isNaN(dulash)) entry.dulash = dulash;
+    if(!isNaN(g9999)) entry.gold9999 = g9999;
+    if(!isNaN(g875)) entry.gold875 = g875;
+  }
+
   sectionCache[currentSectionKey].unshift(entry);
   await persistSection(currentSectionKey);
 
-  $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
+  $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
+  $('f_voucher').value=''; $('f_time').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
+  $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
   renderTable();
   showToast('تم تسجيل القيد بختم GBI');
 });
@@ -708,6 +774,12 @@ async function openSection(key){
   const s = SECTIONS.find(x=>x.key===key);
   $('sectionTitle').textContent = s.icon + '  ' + s.name;
   $('searchInput').value = '';
+  $('f_movement_wrap').style.display = key === 'damgha' ? 'block' : 'none';
+  $('f_dulash_wrap').style.display = key === 'khaam' ? 'block' : 'none';
+  $('f_gold9999_wrap').style.display = key === 'khaam' ? 'block' : 'none';
+  $('f_gold875_wrap').style.display = key === 'khaam' ? 'block' : 'none';
+  $('f_type').selectedIndex = 0;
+  applyTypeSelection();
   await loadSection(key);
   $('dashboardView').style.display = 'none';
   $('sectionView').style.display = 'block';
@@ -728,15 +800,71 @@ function renderTable(){
   const totalWeight = entries.reduce((a,e)=>a+e.weight*e.qty,0);
   const totalQty = entries.reduce((a,e)=>a+e.qty,0);
   const byType = {};
-  entries.forEach(e=>{ byType[e.type] = (byType[e.type]||0) + e.weight*e.qty; });
+  entries.forEach(e=>{
+    const key = e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
+    if(!byType[key]) byType[key] = {weight:0, qty:0};
+    byType[key].weight += e.weight*e.qty;
+    byType[key].qty += e.qty;
+  });
   let sumHtml = `
     <div class="sumBox"><div class="n">${totalWeight.toFixed(3)}</div><div class="l">إجمالي الوزن (جم)</div></div>
     <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
     <div class="sumBox"><div class="n">${entries.length}</div><div class="l">عدد القيود</div></div>
   `;
   Object.keys(byType).slice(0,3).forEach(t=>{
-    sumHtml += `<div class="sumBox"><div class="n">${byType[t].toFixed(3)}</div><div class="l">${t} (جم)</div></div>`;
+    sumHtml += `<div class="sumBox"><div class="l" style="font-size:16px;font-weight:800;color:var(--gold-bright);margin-bottom:6px;">العملة: ${t}</div><div class="n">${byType[t].qty} قطعة</div><div class="n" style="font-size:15px;margin-top:6px;">${byType[t].weight.toFixed(3)} جم</div></div>`;
   });
+
+  if(currentSectionKey === 'damgha'){
+    const submittedEntries = entries.filter(e=>e.movement==='مسلم للدمغة');
+    const receivedEntries  = entries.filter(e=>e.movement==='وارد من الدمغة');
+    const submitted = submittedEntries.reduce((a,e)=>a+e.weight*e.qty,0);
+    const received  = receivedEntries.reduce((a,e)=>a+e.weight*e.qty,0);
+    const remaining = submitted - received;
+    sumHtml += `<div class="sumBox"><div class="n">${remaining.toFixed(3)}</div><div class="l">الباقي في الدمغة (جم)</div></div>`;
+
+    function byTypeBreakdown(list){
+      const byT = {};
+      list.forEach(e=>{
+        const key = e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
+        if(!byT[key]) byT[key] = {weight:0, qty:0};
+        byT[key].weight += e.weight*e.qty;
+        byT[key].qty += e.qty;
+      });
+      return byT;
+    }
+    function movementBox(title, list){
+      const byT = byTypeBreakdown(list);
+      const keys = Object.keys(byT);
+      let rows = keys.map(k => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:13.5px;">
+          <span style="color:var(--gold-bright);font-weight:700;">العملة: ${k}</span>
+          <span>${byT[k].qty} قطعة</span>
+          <span>${byT[k].weight.toFixed(3)} جم</span>
+        </div>`).join('');
+      if(!rows) rows = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div>';
+      return `
+        <div class="panel" style="margin-bottom:14px;">
+          <h4 style="font-size:16px;color:var(--gold-bright);margin-bottom:10px;">${title}</h4>
+          ${rows}
+        </div>`;
+    }
+    $('movementBreakdown').innerHTML =
+      movementBox('المسلم للدمغة', submittedEntries) +
+      movementBox('الوارد من الدمغة', receivedEntries);
+  }else{
+    $('movementBreakdown').innerHTML = '';
+  }
+  if(currentSectionKey === 'khaam'){
+    const dulashTotal = entries.reduce((a,e)=>a+(e.dulash||0),0);
+    const g9999 = entries.reduce((a,e)=>a+(e.gold9999||0),0);
+    const g875 = entries.reduce((a,e)=>a+(e.gold875||0),0);
+    sumHtml += `
+      <div class="sumBox"><div class="n">${dulashTotal}</div><div class="l">إجمالي عدد الدلوش</div></div>
+      <div class="sumBox"><div class="n">${g9999.toFixed(3)}</div><div class="l">ذهب خام 999.9 (جم)</div></div>
+      <div class="sumBox"><div class="n">${g875.toFixed(3)}</div><div class="l">ذهب خام 875 (جم)</div></div>
+    `;
+  }
   $('summaryStrip').innerHTML = sumHtml;
 
   const tbody = $('tbody');
@@ -745,13 +873,23 @@ function renderTable(){
 
   filtered.forEach(e=>{
     const tr = document.createElement('tr');
+    const movementTag = e.movement ? `<span class="tag" style="margin-inline-start:6px;background:rgba(122,154,92,0.14);color:var(--green);border-color:rgba(122,154,92,0.3);">${e.movement}</span>` : '';
+    let extraNotes = '';
+    const khaamParts = [];
+    if(e.dulash !== undefined) khaamParts.push('دلوش: ' + e.dulash);
+    if(e.gold9999 !== undefined) khaamParts.push('999.9: ' + e.gold9999 + 'جم');
+    if(e.gold875 !== undefined) khaamParts.push('875: ' + e.gold875 + 'جم');
+    if(khaamParts.length) extraNotes = '<br><span style="color:var(--muted);font-size:11px;">' + khaamParts.join(' · ') + '</span>';
     tr.innerHTML = `
       <td data-label="التاريخ">${e.date}</td>
-      <td data-label="الصنف"><span class="tag">${e.type}</span></td>
+      <td data-label="السند">${e.voucher || '—'}</td>
+      <td data-label="الساعة">${e.time || '—'}</td>
+      <td data-label="الصنف"><span class="tag">${e.type}</span>${movementTag}</td>
+      <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
       <td data-label="الوزن">${e.weight.toFixed(3)}</td>
       <td data-label="العدد">${e.qty}</td>
       <td data-label="الباركود">${e.barcode || '—'}</td>
-      <td data-label="ملاحظات">${e.notes || '—'}</td>
+      <td data-label="ملاحظات">${(e.notes || '—')}${extraNotes}</td>
       <td data-label="">
         <div class="rowActions">
           <button class="del" data-id="${e.id}">حذف</button>
@@ -818,7 +956,10 @@ async function renderReport(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td data-label="الخانة">${e.sectionIcon} ${e.sectionName}</td>
+      <td data-label="السند">${e.voucher || '—'}</td>
+      <td data-label="الساعة">${e.time || '—'}</td>
       <td data-label="الصنف"><span class="tag">${e.type}</span></td>
+      <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
       <td data-label="الوزن">${e.weight.toFixed(3)}</td>
       <td data-label="العدد">${e.qty}</td>
       <td data-label="الباركود">${e.barcode || '—'}</td>
