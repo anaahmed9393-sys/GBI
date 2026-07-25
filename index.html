@@ -285,8 +285,12 @@
   </div>
   <div class="loginCard">
     <div class="field">
-      <label>اسم المستخدم</label>
-      <input type="text" id="userInput" placeholder="admin" autocomplete="username">
+      <label>نوع الحساب</label>
+      <select id="userInput">
+        <option value="admin">أدمن</option>
+        <option value="manager">مدير</option>
+        <option value="operator">مشغل</option>
+      </select>
     </div>
     <div class="field">
       <label>كلمة المرور</label>
@@ -545,17 +549,14 @@ $('passInput').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); }
 $('userInput').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
 
 async function doLogin(){
-  const u = $('userInput').value.trim();
+  const roleSel = $('userInput').value;
   const p = $('passInput').value;
   $('loginErr').textContent = '';
   const auth = await loadAuth();
-  let matchedRole = null;
-  for(const r of ['admin','manager','operator']){
-    if(auth[r] && u === auth[r].username.trim() && p === auth[r].password){ matchedRole = r; break; }
-  }
-  if(matchedRole){
-    currentUser = u;
-    currentRole = matchedRole;
+  const account = auth[roleSel];
+  if(account && p === account.password){
+    currentUser = account.username;
+    currentRole = roleSel;
     $('loginSeal').classList.remove('stamp'); void $('loginSeal').offsetWidth; $('loginSeal').classList.add('stamp');
     setTimeout(async ()=>{
       $('loginScreen').style.display = 'none';
@@ -570,7 +571,7 @@ async function doLogin(){
       }
     }, 380);
   }else{
-    $('loginErr').textContent = 'اسم المستخدم أو كلمة المرور غير صحيحة';
+    $('loginErr').textContent = 'كلمة المرور غير صحيحة';
   }
 }
 
@@ -579,7 +580,7 @@ $('logoutBtn').addEventListener('click', ()=>{
   currentRole = null;
   $('app').style.display = 'none';
   $('loginScreen').style.display = 'flex';
-  $('userInput').value=''; $('passInput').value='';
+  $('userInput').value='admin'; $('passInput').value='';
 });
 
 $('settingsBtn').addEventListener('click', async ()=>{
