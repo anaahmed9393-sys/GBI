@@ -272,6 +272,37 @@
   @media (prefers-reduced-motion: reduce){
     *{animation:none !important;transition:none !important;}
   }
+
+  /* ===== Print ===== */
+  #printArea{
+    position:fixed;
+    top:-99999px;
+    left:-99999px;
+    width:0;
+    height:0;
+    overflow:hidden;
+  }
+  @media print{
+    body *{ visibility:hidden; }
+    #printArea, #printArea *{ visibility:visible; }
+    #printArea{
+      position:static;
+      top:auto; left:auto;
+      width:auto; height:auto;
+      overflow:visible;
+      font-family:'Tajawal', Arial, sans-serif;
+      color:#111;
+      direction:rtl;
+      padding:16px;
+    }
+    #printArea h1{font-size:19px;margin-bottom:2px;}
+    #printArea h2{font-size:13px;color:#555;margin-bottom:12px;font-weight:400;}
+    #printArea .meta{font-size:12px;color:#333;margin-bottom:12px;padding:8px 12px;background:#f3f3f3;border-radius:6px;}
+    #printArea table{width:100%;border-collapse:collapse;margin-top:8px;}
+    #printArea th, #printArea td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:right;}
+    #printArea th{background:#eee;}
+    #printArea .pfooter{margin-top:20px;font-size:10.5px;color:#777;text-align:center;}
+  }
 </style>
 </head>
 <body>
@@ -329,6 +360,12 @@
         <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">شوف كل حاجة حصلت في أي يوم — النهاردة أو أي يوم فات</p>
         <button class="btn" id="openReportBtn" style="max-width:220px;">فتح التقرير اليومي</button>
       </div>
+
+      <div class="panel" style="margin-top:14px;">
+        <h4>🖨️ طباعة شاملة</h4>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">اطبع كل القيود في كل الخانات دفعة واحدة</p>
+        <button class="btn" id="printAllBtn" style="max-width:260px;">طباعة كل الخانات</button>
+      </div>
     </div>
 
     <!-- Daily report view -->
@@ -338,7 +375,10 @@
           <button class="back" id="reportBackBtn">→ رجوع للوحة الرئيسية</button>
           <h2 class="display" style="margin-top:8px;">📊 التقرير اليومي</h2>
         </div>
-        <input type="date" id="reportDate">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="date" id="reportDate">
+          <button class="iconbtn" id="printReportBtn">🖨️ طباعة</button>
+        </div>
       </div>
 
       <div class="summary" id="reportSummary"></div>
@@ -376,7 +416,10 @@
           <button class="back" id="backBtn">→ رجوع للوحة الرئيسية</button>
           <h2 class="display" id="sectionTitle" style="margin-top:8px;"></h2>
         </div>
-        <input type="search" id="searchInput" placeholder="بحث بالاسم أو رقم الباركود...">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+          <input type="search" id="searchInput" placeholder="بحث بالاسم أو رقم الباركود...">
+          <button class="iconbtn" id="printSectionBtn">🖨️ طباعة</button>
+        </div>
       </div>
 
       <div class="summary" id="summaryStrip"></div>
@@ -498,6 +541,7 @@
 </div>
 
 <div class="toast" id="toast"><span class="tstamp">GBI</span><span id="toastMsg"></span></div>
+<div id="printArea"></div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
@@ -522,6 +566,7 @@ try{
 /* ================= CONFIG ================= */
 const SECTIONS = [
   {key:'baraqod',  name:'الباركود',      icon:'▤', desc:'تسجيل وحصر أرقام الباركود'},
+  {key:'taghlif',  name:'التغليف',       icon:'▧', desc:'تسجيل وحصر أصناف التغليف'},
   {key:'damgha',   name:'الدمغة',        icon:'◉', desc:'قيود الدمغة والمعايرة'},
   {key:'jard',     name:'الجرد اليومي',  icon:'▦', desc:'الجرد اليومي للأصناف'},
   {key:'tashgheel',name:'تحت التشغيل',   icon:'⚙', desc:'الأصناف تحت التشغيل حاليًا'},
@@ -714,6 +759,14 @@ function applyTypeSelection(){
   $('f_weight_tola_wrap').style.display = isTola ? 'block' : 'none';
   const k = karatForType(t);
   $('f_karat').value = k ? (k + ' عيار') : '';
+
+  const fixedWeights = {'جنيه':8, 'نص جنيه':4, 'ربع جنيه':2};
+  $('f_weight').readOnly = false;
+  if(!isTola) $('f_weight').value = '';
+  if(fixedWeights[t] !== undefined){
+    $('f_weight').value = fixedWeights[t];
+    $('f_weight').readOnly = true;
+  }
 }
 $('f_type').addEventListener('change', applyTypeSelection);
 
@@ -766,7 +819,6 @@ $('addBtn').addEventListener('click', async ()=>{
   $('f_voucher').value=''; $('f_time').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
   $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
   renderTable();
-  showToast('تم تسجيل القيد بختم GBI');
 });
 
 async function openSection(key){
@@ -799,61 +851,68 @@ function renderTable(){
   // summary
   const totalWeight = entries.reduce((a,e)=>a+e.weight*e.qty,0);
   const totalQty = entries.reduce((a,e)=>a+e.qty,0);
-  const byType = {};
-  entries.forEach(e=>{
-    const key = e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
-    if(!byType[key]) byType[key] = {weight:0, qty:0};
-    byType[key].weight += e.weight*e.qty;
-    byType[key].qty += e.qty;
-  });
   let sumHtml = `
     <div class="sumBox"><div class="n">${totalWeight.toFixed(3)}</div><div class="l">إجمالي الوزن (جم)</div></div>
     <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
     <div class="sumBox"><div class="n">${entries.length}</div><div class="l">عدد القيود</div></div>
   `;
-  Object.keys(byType).slice(0,3).forEach(t=>{
-    sumHtml += `<div class="sumBox"><div class="l" style="font-size:16px;font-weight:800;color:var(--gold-bright);margin-bottom:6px;">العملة: ${t}</div><div class="n">${byType[t].qty} قطعة</div><div class="n" style="font-size:15px;margin-top:6px;">${byType[t].weight.toFixed(3)} جم</div></div>`;
-  });
+
+  function byTypeBreakdown(list){
+    const byT = {};
+    list.forEach(e=>{
+      const key = e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
+      if(!byT[key]) byT[key] = {weight:0, qty:0};
+      byT[key].weight += e.weight*e.qty;
+      byT[key].qty += e.qty;
+    });
+    return byT;
+  }
+  function renderBreakdownRows(byT){
+    const keys = Object.keys(byT);
+    let rows = keys.map(k => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:13.5px;">
+        <span style="color:var(--gold-bright);font-weight:700;">العملة: ${k}</span>
+        <span>${byT[k].qty} قطعة</span>
+        <span>${byT[k].weight.toFixed(3)} جم</span>
+      </div>`).join('');
+    if(!rows) rows = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div>';
+    return rows;
+  }
+  function movementBox(title, byT){
+    const tQty = Object.values(byT).reduce((a,x)=>a+x.qty,0);
+    const tWeight = Object.values(byT).reduce((a,x)=>a+x.weight,0);
+    return `
+      <div class="panel" style="margin-bottom:14px;">
+        ${title ? `<h4 style="font-size:16px;color:var(--gold-bright);margin-bottom:10px;">${title}</h4>` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:2px solid var(--gold);font-size:14px;font-weight:700;">
+          <span>الإجمالي</span>
+          <span>${tQty} قطعة</span>
+          <span>${tWeight.toFixed(3)} جم</span>
+        </div>
+        ${renderBreakdownRows(byT)}
+      </div>`;
+  }
 
   if(currentSectionKey === 'damgha'){
     const submittedEntries = entries.filter(e=>e.movement==='مسلم للدمغة');
     const receivedEntries  = entries.filter(e=>e.movement==='وارد من الدمغة');
-    const submitted = submittedEntries.reduce((a,e)=>a+e.weight*e.qty,0);
-    const received  = receivedEntries.reduce((a,e)=>a+e.weight*e.qty,0);
-    const remaining = submitted - received;
-    sumHtml += `<div class="sumBox"><div class="n">${remaining.toFixed(3)}</div><div class="l">الباقي في الدمغة (جم)</div></div>`;
 
-    function byTypeBreakdown(list){
-      const byT = {};
-      list.forEach(e=>{
-        const key = e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
-        if(!byT[key]) byT[key] = {weight:0, qty:0};
-        byT[key].weight += e.weight*e.qty;
-        byT[key].qty += e.qty;
-      });
-      return byT;
-    }
-    function movementBox(title, list){
-      const byT = byTypeBreakdown(list);
-      const keys = Object.keys(byT);
-      let rows = keys.map(k => `
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:13.5px;">
-          <span style="color:var(--gold-bright);font-weight:700;">العملة: ${k}</span>
-          <span>${byT[k].qty} قطعة</span>
-          <span>${byT[k].weight.toFixed(3)} جم</span>
-        </div>`).join('');
-      if(!rows) rows = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div>';
-      return `
-        <div class="panel" style="margin-bottom:14px;">
-          <h4 style="font-size:16px;color:var(--gold-bright);margin-bottom:10px;">${title}</h4>
-          ${rows}
-        </div>`;
-    }
+    const subT = byTypeBreakdown(submittedEntries);
+    const recT = byTypeBreakdown(receivedEntries);
+    const remT = {};
+    new Set([...Object.keys(subT), ...Object.keys(recT)]).forEach(k=>{
+      const sq = (subT[k]||{}).qty || 0, sw = (subT[k]||{}).weight || 0;
+      const rq = (recT[k]||{}).qty || 0, rw = (recT[k]||{}).weight || 0;
+      remT[k] = {qty: sq-rq, weight: sw-rw};
+    });
+
     $('movementBreakdown').innerHTML =
-      movementBox('المسلم للدمغة', submittedEntries) +
-      movementBox('الوارد من الدمغة', receivedEntries);
+      movementBox('المسلم للدمغة', subT) +
+      movementBox('الوارد من الدمغة', recT) +
+      movementBox('الباقي في الدمغة', remT);
   }else{
-    $('movementBreakdown').innerHTML = '';
+    const byT = byTypeBreakdown(entries);
+    $('movementBreakdown').innerHTML = movementBox('', byT);
   }
   if(currentSectionKey === 'khaam'){
     const dulashTotal = entries.reduce((a,e)=>a+(e.dulash||0),0);
@@ -968,7 +1027,121 @@ async function renderReport(){
     `;
     tbody.appendChild(tr);
   });
+
+  lastReportRows = all;
+  lastReportDate = dateISO;
 }
+
+/* ================= PRINTING ================= */
+let lastReportRows = [];
+let lastReportDate = '';
+
+function printFromArea(bodyHtml){
+  $('printArea').innerHTML = bodyHtml + `<div class="pfooter">GBI · نظام المتابعة المركزية — طُبع بتاريخ ${new Date().toLocaleString('ar-EG')}</div>`;
+  window.print();
+}
+
+$('printAllBtn').addEventListener('click', async ()=>{
+  let sectionsHtml = '';
+  let grandWeight = 0, grandQty = 0, grandCount = 0;
+
+  for(const s of SECTIONS){
+    let entries = [];
+    try{ entries = await loadSection(s.key); }catch(e){ console.warn('printAll load fail', s.key, e); }
+    entries = entries || [];
+    const totalWeight = entries.reduce((a,e)=>a+e.weight*e.qty, 0);
+    const totalQty = entries.reduce((a,e)=>a+e.qty, 0);
+    grandWeight += totalWeight; grandQty += totalQty; grandCount += entries.length;
+
+    const rows = entries.map(e=>`
+      <tr>
+        <td>${e.date}</td>
+        <td>${e.voucher || '—'}</td>
+        <td>${e.time || '—'}</td>
+        <td>${e.type}${e.movement ? ' — ' + e.movement : ''}</td>
+        <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
+        <td>${e.weight.toFixed(3)}</td>
+        <td>${e.qty}</td>
+        <td>${e.barcode || '—'}</td>
+        <td>${e.notes || '—'}</td>
+      </tr>`).join('');
+
+    sectionsHtml += `
+      <h1 style="margin-top:22px;">${s.icon} ${s.name}</h1>
+      <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
+      <table>
+        <thead><tr><th>التاريخ</th><th>السند</th><th>الساعة</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>الباركود</th><th>ملاحظات</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#888;">لا توجد قيود</td></tr>'}</tbody>
+      </table>`;
+  }
+
+  const html = `
+    <h1>GBI — تقرير شامل لكل الخانات</h1>
+    <h2>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</h2>
+    <div class="meta">إجمالي الوزن الكلي: ${grandWeight.toFixed(3)} جم — إجمالي العدد الكلي: ${grandQty} — إجمالي القيود: ${grandCount}</div>
+    ${sectionsHtml}
+  `;
+  printFromArea(html);
+});
+
+$('printSectionBtn').addEventListener('click', ()=>{
+  const s = SECTIONS.find(x=>x.key===currentSectionKey);
+  const entries = sectionCache[currentSectionKey] || [];
+  const totalWeight = entries.reduce((a,e)=>a+e.weight*e.qty, 0);
+  const totalQty = entries.reduce((a,e)=>a+e.qty, 0);
+  const rows = entries.map(e=>`
+    <tr>
+      <td>${e.date}</td>
+      <td>${e.voucher || '—'}</td>
+      <td>${e.time || '—'}</td>
+      <td>${e.type}${e.movement ? ' — ' + e.movement : ''}</td>
+      <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
+      <td>${e.weight.toFixed(3)}</td>
+      <td>${e.qty}</td>
+      <td>${e.barcode || '—'}</td>
+      <td>${e.notes || '—'}</td>
+    </tr>`).join('');
+  const html = `
+    <h1>${s.icon} ${s.name} — GBI</h1>
+    <h2>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</h2>
+    <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
+    <table>
+      <thead><tr><th>التاريخ</th><th>السند</th><th>الساعة</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>الباركود</th><th>ملاحظات</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  printFromArea(html);
+});
+
+$('printReportBtn').addEventListener('click', ()=>{
+  const all = lastReportRows;
+  const totalWeight = all.reduce((a,e)=>a+e.weight*e.qty, 0);
+  const totalQty = all.reduce((a,e)=>a+e.qty, 0);
+  const rows = all.map(e=>`
+    <tr>
+      <td>${e.sectionName}</td>
+      <td>${e.voucher || '—'}</td>
+      <td>${e.time || '—'}</td>
+      <td>${e.type}</td>
+      <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
+      <td>${e.weight.toFixed(3)}</td>
+      <td>${e.qty}</td>
+      <td>${e.barcode || '—'}</td>
+      <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
+      <td>${e.notes || '—'}</td>
+    </tr>`).join('');
+  const html = `
+    <h1>📊 التقرير اليومي — GBI</h1>
+    <h2>اليوم: ${lastReportDate}</h2>
+    <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — إجمالي القيود: ${all.length}</div>
+    <table>
+      <thead><tr><th>الخانة</th><th>السند</th><th>الساعة</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>الباركود</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+  printFromArea(html);
+});
+
 </script>
 </body>
 </html>
