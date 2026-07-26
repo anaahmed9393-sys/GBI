@@ -273,6 +273,16 @@
     *{animation:none !important;transition:none !important;}
   }
 
+  /* Manager role: hide date / voucher / weight columns in the entries table */
+  body.role-manager #sectionTable th:nth-child(1),
+  body.role-manager #sectionTable td:nth-child(1),
+  body.role-manager #sectionTable th:nth-child(2),
+  body.role-manager #sectionTable td:nth-child(2),
+  body.role-manager #sectionTable th:nth-child(6),
+  body.role-manager #sectionTable td:nth-child(6){
+    display:none;
+  }
+
   /* ===== Print ===== */
   #printArea{
     position:fixed;
@@ -374,9 +384,12 @@
         <div>
           <button class="back" id="reportBackBtn">→ رجوع للوحة الرئيسية</button>
           <h2 class="display" style="margin-top:8px;">📊 التقرير اليومي</h2>
+          <div id="reportDayLabel" style="color:var(--gold-bright);font-size:14px;font-weight:700;margin-top:6px;"></div>
         </div>
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button class="iconbtn" id="reportPrevBtn">◀ يوم سابق</button>
           <input type="date" id="reportDate">
+          <button class="iconbtn" id="reportNextBtn">يوم تالي ▶</button>
           <button class="iconbtn" id="printReportBtn">🖨️ طباعة</button>
         </div>
       </div>
@@ -418,6 +431,7 @@
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <input type="search" id="searchInput" placeholder="بحث بالاسم أو رقم الباركود...">
+          <input type="date" id="dateFilterInput" title="بحث بالتاريخ">
           <button class="iconbtn" id="printSectionBtn">🖨️ طباعة</button>
         </div>
       </div>
@@ -425,7 +439,7 @@
       <div class="summary" id="summaryStrip"></div>
       <div id="movementBreakdown"></div>
 
-      <div class="panel">
+      <div class="panel" id="addEntryPanel">
         <h4>إضافة قيد جديد</h4>
         <div class="formGrid">
           <div class="field" style="margin-bottom:0;">
@@ -511,8 +525,8 @@
         </div>
       </div>
 
-      <div class="panel" style="padding:0;overflow-x:auto;">
-        <table>
+      <div class="panel" style="padding:0;overflow-x:auto;" id="entriesTablePanel">
+        <table id="sectionTable">
           <thead>
             <tr>
               <th>التاريخ</th>
@@ -585,7 +599,7 @@ function $(id){return document.getElementById(id);}
 function uid(){return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);}
 function todayStr(){
   const d = new Date();
-  return d.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
+  return d.toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'2-digit', day:'2-digit'});
 }
 function showToast(msg){
   $('toastMsg').textContent = msg;
@@ -653,6 +667,7 @@ async function doLogin(){
       $('app').style.display = 'flex';
       $('userChip').textContent = ROLE_LABELS[currentRole] + ': ' + currentUser;
       $('settingsBtn').style.display = currentRole === 'admin' ? 'inline-flex' : 'none';
+      document.body.classList.toggle('role-manager', currentRole === 'manager');
       try{
         await renderDashboard();
       }catch(err){
@@ -668,6 +683,7 @@ async function doLogin(){
 $('logoutBtn').addEventListener('click', ()=>{
   currentUser = null;
   currentRole = null;
+  document.body.classList.remove('role-manager');
   $('app').style.display = 'none';
   $('loginScreen').style.display = 'flex';
   $('userInput').value='admin'; $('passInput').value='';
@@ -724,20 +740,25 @@ async function persistSection(key){
 async function renderDashboard(){
   const grid = $('dashGrid');
   grid.innerHTML = '';
-  for(const s of SECTIONS){
+
+  const results = await Promise.all(SECTIONS.map(async s=>{
     let entries = [];
     try{ entries = await loadSection(s.key); }catch(e){ console.warn('tile load fail', s.key, e); }
+    return {s, entries: entries || []};
+  }));
+
+  results.forEach(({s, entries})=>{
     const card = document.createElement('div');
     card.className = 'cardTile';
     card.innerHTML = `
-      <span class="count">${(entries||[]).length} قيد</span>
+      <span class="count">${entries.length} قيد</span>
       <span class="ico">${s.icon}</span>
       <h3 class="display">${s.name}</h3>
       <p>${s.desc}</p>
     `;
     card.addEventListener('click', ()=>openSection(s.key));
     grid.appendChild(card);
-  }
+  });
   $('dashboardView').style.display = 'block';
   $('sectionView').style.display = 'none';
   $('reportView').style.display = 'none';
@@ -771,6 +792,7 @@ function applyTypeSelection(){
 $('f_type').addEventListener('change', applyTypeSelection);
 
 $('searchInput').addEventListener('input', ()=>renderTable());
+$('dateFilterInput').addEventListener('change', ()=>renderTable());
 
 $('addBtn').addEventListener('click', async ()=>{
   const type = $('f_type').value;
@@ -813,12 +835,12 @@ $('addBtn').addEventListener('click', async ()=>{
   }
 
   sectionCache[currentSectionKey].unshift(entry);
-  await persistSection(currentSectionKey);
+  renderTable();
+  persistSection(currentSectionKey).catch(e=>console.warn('background persist failed', e));
 
   $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
   $('f_voucher').value=''; $('f_time').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
   $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
-  renderTable();
 });
 
 async function openSection(key){
@@ -826,21 +848,35 @@ async function openSection(key){
   const s = SECTIONS.find(x=>x.key===key);
   $('sectionTitle').textContent = s.icon + '  ' + s.name;
   $('searchInput').value = '';
+  $('dateFilterInput').value = '';
   $('f_movement_wrap').style.display = key === 'damgha' ? 'block' : 'none';
   $('f_dulash_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_gold9999_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_gold875_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_type').selectedIndex = 0;
   applyTypeSelection();
-  await loadSection(key);
+  $('addEntryPanel').style.display = (currentRole === 'manager') ? 'none' : 'block';
+
   $('dashboardView').style.display = 'none';
   $('sectionView').style.display = 'block';
   $('reportView').style.display = 'none';
-  renderTable();
+
+  // Instant navigation: render immediately from cache if we already have it,
+  // then quietly refresh from storage in the background.
+  if(sectionCache[key]) renderTable();
+  loadSection(key).then(()=>{
+    if(currentSectionKey === key) renderTable();
+  }).catch(e=>console.warn('background section refresh failed', e));
 }
 
 function renderTable(){
-  const entries = sectionCache[currentSectionKey] || [];
+  let entries = sectionCache[currentSectionKey] || [];
+  const dateFilterVal = $('dateFilterInput').value;
+  if(dateFilterVal) entries = entries.filter(e => e.dateISO === dateFilterVal);
+
+  const isManager = currentRole === 'manager';
+  $('entriesTablePanel').style.display = isManager ? 'none' : '';
+
   const q = $('searchInput').value.trim().toLowerCase();
   const filtered = q ? entries.filter(e =>
       (e.type||'').toLowerCase().includes(q) ||
@@ -881,9 +917,14 @@ function renderTable(){
   function movementBox(title, byT){
     const tQty = Object.values(byT).reduce((a,x)=>a+x.qty,0);
     const tWeight = Object.values(byT).reduce((a,x)=>a+x.weight,0);
+    const now = new Date();
+    const dayLabel = now.toLocaleDateString('ar-EG', {weekday:'long'}) + ' — ' + now.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
     return `
       <div class="panel" style="margin-bottom:14px;">
-        ${title ? `<h4 style="font-size:16px;color:var(--gold-bright);margin-bottom:10px;">${title}</h4>` : ''}
+        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+          ${title ? `<h4 style="font-size:16px;color:var(--gold-bright);margin:0;">${title}</h4>` : '<span></span>'}
+          <span style="font-size:12.5px;color:var(--muted);">${dayLabel}</span>
+        </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:2px solid var(--gold);font-size:14px;font-weight:700;">
           <span>الإجمالي</span>
           <span>${tQty} قطعة</span>
@@ -932,7 +973,7 @@ function renderTable(){
 
   filtered.forEach(e=>{
     const tr = document.createElement('tr');
-    const movementTag = e.movement ? `<span class="tag" style="margin-inline-start:6px;background:rgba(122,154,92,0.14);color:var(--green);border-color:rgba(122,154,92,0.3);">${e.movement}</span>` : '';
+    const movementTag = (e.movement && currentRole !== 'manager') ? `<span class="tag" style="margin-inline-start:6px;background:rgba(122,154,92,0.14);color:var(--green);border-color:rgba(122,154,92,0.3);">${e.movement}</span>` : '';
     let extraNotes = '';
     const khaamParts = [];
     if(e.dulash !== undefined) khaamParts.push('دلوش: ' + e.dulash);
@@ -950,9 +991,7 @@ function renderTable(){
       <td data-label="الباركود">${e.barcode || '—'}</td>
       <td data-label="ملاحظات">${(e.notes || '—')}${extraNotes}</td>
       <td data-label="">
-        <div class="rowActions">
-          <button class="del" data-id="${e.id}">حذف</button>
-        </div>
+        ${currentRole === 'manager' ? '' : `<div class="rowActions"><button class="del" data-id="${e.id}">حذف</button></div>`}
       </td>
     `;
     tbody.appendChild(tr);
@@ -980,9 +1019,26 @@ $('openReportBtn').addEventListener('click', async ()=>{
 });
 $('reportBackBtn').addEventListener('click', renderDashboard);
 $('reportDate').addEventListener('change', renderReport);
+$('reportPrevBtn').addEventListener('click', ()=>{
+  const d = new Date(($('reportDate').value || new Date().toISOString().slice(0,10)) + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  $('reportDate').value = d.toISOString().slice(0,10);
+  renderReport();
+});
+$('reportNextBtn').addEventListener('click', ()=>{
+  const d = new Date(($('reportDate').value || new Date().toISOString().slice(0,10)) + 'T00:00:00');
+  d.setDate(d.getDate() + 1);
+  $('reportDate').value = d.toISOString().slice(0,10);
+  renderReport();
+});
 
 async function renderReport(){
   const dateISO = $('reportDate').value || new Date().toISOString().slice(0,10);
+  const dObj = new Date(dateISO + 'T00:00:00');
+  const weekday = dObj.toLocaleDateString('ar-EG', {weekday:'long'});
+  const prettyDate = dObj.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
+  $('reportDayLabel').textContent = weekday + ' — ' + prettyDate;
+
   let all = [];
   for(const s of SECTIONS){
     let entries = [];
