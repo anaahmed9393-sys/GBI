@@ -284,35 +284,23 @@
   }
 
   /* ===== Print ===== */
-  #printArea{
-    position:fixed;
-    top:-99999px;
-    left:-99999px;
-    width:0;
-    height:0;
-    overflow:hidden;
+  #printArea{ display:none; }
+  body.print-mode > *:not(#printArea){ display:none !important; }
+  body.print-mode{ background:#fff !important; }
+  body.print-mode #printArea{
+    display:block;
+    font-family:'Tajawal', Arial, sans-serif;
+    color:#111;
+    direction:rtl;
+    padding:16px;
   }
-  @media print{
-    body *{ visibility:hidden; }
-    #printArea, #printArea *{ visibility:visible; }
-    #printArea{
-      position:static;
-      top:auto; left:auto;
-      width:auto; height:auto;
-      overflow:visible;
-      font-family:'Tajawal', Arial, sans-serif;
-      color:#111;
-      direction:rtl;
-      padding:16px;
-    }
-    #printArea h1{font-size:19px;margin-bottom:2px;}
-    #printArea h2{font-size:13px;color:#555;margin-bottom:12px;font-weight:400;}
-    #printArea .meta{font-size:12px;color:#333;margin-bottom:12px;padding:8px 12px;background:#f3f3f3;border-radius:6px;}
-    #printArea table{width:100%;border-collapse:collapse;margin-top:8px;}
-    #printArea th, #printArea td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:right;}
-    #printArea th{background:#eee;}
-    #printArea .pfooter{margin-top:20px;font-size:10.5px;color:#777;text-align:center;}
-  }
+  body.print-mode #printArea h1{font-size:19px;margin-bottom:2px;}
+  body.print-mode #printArea h2{font-size:13px;color:#555;margin-bottom:12px;font-weight:400;}
+  body.print-mode #printArea .meta{font-size:12px;color:#333;margin-bottom:12px;padding:8px 12px;background:#f3f3f3;border-radius:6px;}
+  body.print-mode #printArea table{width:100%;border-collapse:collapse;margin-top:8px;}
+  body.print-mode #printArea th, body.print-mode #printArea td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:right;}
+  body.print-mode #printArea th{background:#eee;}
+  body.print-mode #printArea .pfooter{margin-top:20px;font-size:10.5px;color:#777;text-align:center;}
 </style>
 </head>
 <body>
@@ -493,10 +481,14 @@
             <input type="text" id="f_karat" placeholder="—" readonly>
           </div>
           <div class="field" style="margin-bottom:0;display:none;" id="f_movement_wrap">
-            <label>نوع الحركة (الدمغة)</label>
-            <select id="f_movement">
-              <option value="مسلم للدمغة">مسلم للدمغة</option>
-              <option value="وارد من الدمغة">وارد من الدمغة</option>
+            <label id="f_movement_label">نوع الحركة</label>
+            <select id="f_movement"></select>
+          </div>
+          <div class="field" style="margin-bottom:0;display:none;" id="f_kasr_wrap">
+            <label>كسر التغليف</label>
+            <select id="f_kasr">
+              <option value="">تسجيل عادي</option>
+              <option value="كسر التغليف">كسر التغليف</option>
             </select>
           </div>
           <div class="field" style="margin-bottom:0;display:none;" id="f_dulash_wrap">
@@ -586,6 +578,10 @@ const SECTIONS = [
   {key:'tashgheel',name:'تحت التشغيل',   icon:'⚙', desc:'الأصناف تحت التشغيل حاليًا'},
   {key:'khaam',    name:'الخام',         icon:'▮', desc:'رصيد الذهب الخام'},
 ];
+const MOVEMENT_OPTIONS = {
+  damgha:  ['مسلم للدمغة', 'وارد من الدمغة', 'كسر الدمغة'],
+  baraqod: ['مسلم للباركود', 'مرتج من الباركود']
+};
 const AUTH_KEY = 'gbi_auth_v1';
 const ROLE_LABELS = {admin:'أدمن', manager:'مدير', operator:'مشغل'};
 let currentUser = null;
@@ -822,8 +818,12 @@ $('addBtn').addEventListener('click', async ()=>{
     ts: now.getTime()
   };
 
-  if(currentSectionKey === 'damgha'){
+  if(MOVEMENT_OPTIONS[currentSectionKey]){
     entry.movement = $('f_movement').value;
+  }
+  if(currentSectionKey === 'taghlif'){
+    const kasr = $('f_kasr').value;
+    if(kasr) entry.movement = kasr;
   }
   if(currentSectionKey === 'khaam'){
     const dulash = parseFloat($('f_dulash').value);
@@ -840,7 +840,7 @@ $('addBtn').addEventListener('click', async ()=>{
 
   $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
   $('f_voucher').value=''; $('f_time').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
-  $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
+  $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value=''; $('f_kasr').value='';
 });
 
 async function openSection(key){
@@ -849,7 +849,14 @@ async function openSection(key){
   $('sectionTitle').textContent = s.icon + '  ' + s.name;
   $('searchInput').value = '';
   $('dateFilterInput').value = '';
-  $('f_movement_wrap').style.display = key === 'damgha' ? 'block' : 'none';
+  if(MOVEMENT_OPTIONS[key]){
+    $('f_movement_wrap').style.display = 'block';
+    $('f_movement_label').textContent = 'نوع الحركة';
+    $('f_movement').innerHTML = MOVEMENT_OPTIONS[key].map(o=>`<option value="${o}">${o}</option>`).join('');
+  }else{
+    $('f_movement_wrap').style.display = 'none';
+  }
+  $('f_kasr_wrap').style.display = key === 'taghlif' ? 'block' : 'none';
   $('f_dulash_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_gold9999_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_gold875_wrap').style.display = key === 'khaam' ? 'block' : 'none';
@@ -934,23 +941,31 @@ function renderTable(){
       </div>`;
   }
 
-  if(currentSectionKey === 'damgha'){
-    const submittedEntries = entries.filter(e=>e.movement==='مسلم للدمغة');
-    const receivedEntries  = entries.filter(e=>e.movement==='وارد من الدمغة');
-
-    const subT = byTypeBreakdown(submittedEntries);
-    const recT = byTypeBreakdown(receivedEntries);
+  if(MOVEMENT_OPTIONS[currentSectionKey]){
+    const opts = MOVEMENT_OPTIONS[currentSectionKey];
+    const groups = opts.map(o => byTypeBreakdown(entries.filter(e=>e.movement===o)));
     const remT = {};
-    new Set([...Object.keys(subT), ...Object.keys(recT)]).forEach(k=>{
-      const sq = (subT[k]||{}).qty || 0, sw = (subT[k]||{}).weight || 0;
-      const rq = (recT[k]||{}).qty || 0, rw = (recT[k]||{}).weight || 0;
-      remT[k] = {qty: sq-rq, weight: sw-rw};
+    const allKeys = new Set();
+    groups.forEach(g=>Object.keys(g).forEach(k=>allKeys.add(k)));
+    allKeys.forEach(k=>{
+      let q = (groups[0][k]||{}).qty || 0, w = (groups[0][k]||{}).weight || 0;
+      for(let i=1;i<groups.length;i++){
+        q -= (groups[i][k]||{}).qty || 0;
+        w -= (groups[i][k]||{}).weight || 0;
+      }
+      remT[k] = {qty:q, weight:w};
     });
-
-    $('movementBreakdown').innerHTML =
-      movementBox('المسلم للدمغة', subT) +
-      movementBox('الوارد من الدمغة', recT) +
-      movementBox('الباقي في الدمغة', remT);
+    const sName = (SECTIONS.find(x=>x.key===currentSectionKey)||{}).name || '';
+    let html = '';
+    opts.forEach((o,i)=>{ html += movementBox(o, groups[i]); });
+    html += movementBox('الباقي في ' + sName, remT);
+    $('movementBreakdown').innerHTML = html;
+  }else if(currentSectionKey === 'taghlif'){
+    const normalEntries = entries.filter(e=>!e.movement);
+    const kasrEntries = entries.filter(e=>e.movement==='كسر التغليف');
+    let html = movementBox('', byTypeBreakdown(normalEntries));
+    if(kasrEntries.length) html += movementBox('كسر التغليف', byTypeBreakdown(kasrEntries));
+    $('movementBreakdown').innerHTML = html;
   }else{
     const byT = byTypeBreakdown(entries);
     $('movementBreakdown').innerHTML = movementBox('', byT);
@@ -1094,8 +1109,11 @@ let lastReportDate = '';
 
 function printFromArea(bodyHtml){
   $('printArea').innerHTML = bodyHtml + `<div class="pfooter">GBI · نظام المتابعة المركزية — طُبع بتاريخ ${new Date().toLocaleString('ar-EG')}</div>`;
+  document.body.classList.add('print-mode');
   window.print();
+  setTimeout(()=>{ document.body.classList.remove('print-mode'); }, 800);
 }
+window.addEventListener('afterprint', ()=>{ document.body.classList.remove('print-mode'); });
 
 $('printAllBtn').addEventListener('click', async ()=>{
   let sectionsHtml = '';
