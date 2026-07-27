@@ -484,13 +484,6 @@
             <label id="f_movement_label">نوع الحركة</label>
             <select id="f_movement"></select>
           </div>
-          <div class="field" style="margin-bottom:0;display:none;" id="f_kasr_wrap">
-            <label>كسر التغليف</label>
-            <select id="f_kasr">
-              <option value="">تسجيل عادي</option>
-              <option value="كسر التغليف">كسر التغليف</option>
-            </select>
-          </div>
           <div class="field" style="margin-bottom:0;display:none;" id="f_dulash_wrap">
             <label>عدد الدلوش</label>
             <input type="number" step="1" id="f_dulash" placeholder="اختياري">
@@ -580,8 +573,10 @@ const SECTIONS = [
 ];
 const MOVEMENT_OPTIONS = {
   damgha:  ['مسلم للدمغة', 'وارد من الدمغة', 'كسر الدمغة'],
-  baraqod: ['مسلم للباركود', 'مرتج من الباركود']
+  baraqod: ['مسلم للباركود', 'مرتج من الباركود'],
+  taghlif: ['مسلم للتغليف', 'كسر التغليف']
 };
+const HIDE_REMAINING = new Set(['baraqod']);
 const AUTH_KEY = 'gbi_auth_v1';
 const ROLE_LABELS = {admin:'أدمن', manager:'مدير', operator:'مشغل'};
 let currentUser = null;
@@ -821,10 +816,6 @@ $('addBtn').addEventListener('click', async ()=>{
   if(MOVEMENT_OPTIONS[currentSectionKey]){
     entry.movement = $('f_movement').value;
   }
-  if(currentSectionKey === 'taghlif'){
-    const kasr = $('f_kasr').value;
-    if(kasr) entry.movement = kasr;
-  }
   if(currentSectionKey === 'khaam'){
     const dulash = parseFloat($('f_dulash').value);
     const g9999 = parseFloat($('f_gold9999').value);
@@ -840,7 +831,7 @@ $('addBtn').addEventListener('click', async ()=>{
 
   $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
   $('f_voucher').value=''; $('f_time').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
-  $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value=''; $('f_kasr').value='';
+  $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
 });
 
 async function openSection(key){
@@ -856,7 +847,6 @@ async function openSection(key){
   }else{
     $('f_movement_wrap').style.display = 'none';
   }
-  $('f_kasr_wrap').style.display = key === 'taghlif' ? 'block' : 'none';
   $('f_dulash_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_gold9999_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_gold875_wrap').style.display = key === 'khaam' ? 'block' : 'none';
@@ -944,27 +934,24 @@ function renderTable(){
   if(MOVEMENT_OPTIONS[currentSectionKey]){
     const opts = MOVEMENT_OPTIONS[currentSectionKey];
     const groups = opts.map(o => byTypeBreakdown(entries.filter(e=>e.movement===o)));
-    const remT = {};
-    const allKeys = new Set();
-    groups.forEach(g=>Object.keys(g).forEach(k=>allKeys.add(k)));
-    allKeys.forEach(k=>{
-      let q = (groups[0][k]||{}).qty || 0, w = (groups[0][k]||{}).weight || 0;
-      for(let i=1;i<groups.length;i++){
-        q -= (groups[i][k]||{}).qty || 0;
-        w -= (groups[i][k]||{}).weight || 0;
-      }
-      remT[k] = {qty:q, weight:w};
-    });
-    const sName = (SECTIONS.find(x=>x.key===currentSectionKey)||{}).name || '';
     let html = '';
     opts.forEach((o,i)=>{ html += movementBox(o, groups[i]); });
-    html += movementBox('الباقي في ' + sName, remT);
-    $('movementBreakdown').innerHTML = html;
-  }else if(currentSectionKey === 'taghlif'){
-    const normalEntries = entries.filter(e=>!e.movement);
-    const kasrEntries = entries.filter(e=>e.movement==='كسر التغليف');
-    let html = movementBox('', byTypeBreakdown(normalEntries));
-    if(kasrEntries.length) html += movementBox('كسر التغليف', byTypeBreakdown(kasrEntries));
+
+    if(!HIDE_REMAINING.has(currentSectionKey)){
+      const remT = {};
+      const allKeys = new Set();
+      groups.forEach(g=>Object.keys(g).forEach(k=>allKeys.add(k)));
+      allKeys.forEach(k=>{
+        let q = (groups[0][k]||{}).qty || 0, w = (groups[0][k]||{}).weight || 0;
+        for(let i=1;i<groups.length;i++){
+          q -= (groups[i][k]||{}).qty || 0;
+          w -= (groups[i][k]||{}).weight || 0;
+        }
+        remT[k] = {qty:q, weight:w};
+      });
+      const sName = (SECTIONS.find(x=>x.key===currentSectionKey)||{}).name || '';
+      html += movementBox('الباقي في ' + sName, remT);
+    }
     $('movementBreakdown').innerHTML = html;
   }else{
     const byT = byTypeBreakdown(entries);
