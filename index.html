@@ -348,15 +348,20 @@
   <main>
     <!-- Dashboard -->
     <div id="dashboardView">
-      <div class="pageTitle">
+      <div class="pageTitle" id="dashTitleAdmin">
         <h2 class="display">الخانات الرئيسية</h2>
       </div>
       <div class="grid" id="dashGrid"></div>
 
+      <div class="pageTitle" id="dashTitleManager" style="display:none;">
+        <h2 class="display">📋 شاشة العرض — كل الخانات</h2>
+      </div>
+      <div id="managerOverview" style="display:none;"></div>
+
       <div class="panel" style="margin-top:20px;">
-        <h4>📊 التقرير اليومي</h4>
-        <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">شوف كل حاجة حصلت في أي يوم — النهاردة أو أي يوم فات</p>
-        <button class="btn" id="openReportBtn" style="max-width:220px;">فتح التقرير اليومي</button>
+        <h4>📊 التقرير (يومي / أسبوعي / شهري)</h4>
+        <p style="color:var(--muted);font-size:13px;margin-bottom:14px;">شوف كل حاجة حصلت في أي يوم أو أسبوع أو شهر — النهاردة أو أي فترة فاتت</p>
+        <button class="btn" id="openReportBtn" style="max-width:220px;">فتح التقرير</button>
       </div>
 
       <div class="panel" style="margin-top:14px;">
@@ -371,13 +376,19 @@
       <div class="pageTitle">
         <div>
           <button class="back" id="reportBackBtn">→ رجوع للوحة الرئيسية</button>
-          <h2 class="display" style="margin-top:8px;">📊 التقرير اليومي</h2>
+          <h2 class="display" style="margin-top:8px;">📊 التقرير</h2>
           <div id="reportDayLabel" style="color:var(--gold-bright);font-size:14px;font-weight:700;margin-top:6px;"></div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <button class="iconbtn" id="reportPrevBtn">◀ يوم سابق</button>
+          <div style="display:flex;gap:4px;">
+            <button class="iconbtn" id="periodDayBtn">يومي</button>
+            <button class="iconbtn" id="periodWeekBtn">أسبوعي</button>
+            <button class="iconbtn" id="periodMonthBtn">شهري</button>
+          </div>
+          <button class="iconbtn" id="reportPrevBtn">◀</button>
           <input type="date" id="reportDate">
-          <button class="iconbtn" id="reportNextBtn">يوم تالي ▶</button>
+          <input type="month" id="reportMonth" style="display:none;">
+          <button class="iconbtn" id="reportNextBtn">▶</button>
           <button class="iconbtn" id="printReportBtn">🖨️ طباعة</button>
         </div>
       </div>
@@ -419,7 +430,7 @@
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <input type="search" id="searchInput" placeholder="بحث بالاسم أو رقم الباركود...">
-          <input type="date" id="dateFilterInput" title="بحث بالتاريخ">
+          <input type="date" id="dateFilterInput" title="بحث بالتاريخ — واختيار تاريخ هنا يسجّل أي قيد جديد بنفس التاريخ ده">
           <button class="iconbtn" id="printSectionBtn">🖨️ طباعة</button>
         </div>
       </div>
@@ -729,6 +740,24 @@ async function persistSection(key){
 
 /* ================= DASHBOARD ================= */
 async function renderDashboard(){
+  $('dashboardView').style.display = 'block';
+  $('sectionView').style.display = 'none';
+  $('reportView').style.display = 'none';
+
+  if(currentRole === 'manager'){
+    $('dashTitleAdmin').style.display = 'none';
+    $('dashGrid').style.display = 'none';
+    $('dashTitleManager').style.display = 'block';
+    $('managerOverview').style.display = 'block';
+    await renderManagerOverview();
+    return;
+  }
+
+  $('dashTitleAdmin').style.display = 'block';
+  $('dashGrid').style.display = 'grid';
+  $('dashTitleManager').style.display = 'none';
+  $('managerOverview').style.display = 'none';
+
   const grid = $('dashGrid');
   grid.innerHTML = '';
 
@@ -750,9 +779,68 @@ async function renderDashboard(){
     card.addEventListener('click', ()=>openSection(s.key));
     grid.appendChild(card);
   });
-  $('dashboardView').style.display = 'block';
-  $('sectionView').style.display = 'none';
-  $('reportView').style.display = 'none';
+}
+
+let managerDates = {}; // sectionKey -> dateISO ('' means show everything)
+
+async function renderManagerOverview(){
+  let html = '';
+  for(const s of SECTIONS){
+    let entries = [];
+    try{ entries = await loadSection(s.key); }catch(e){ console.warn('overview load fail', s.key, e); }
+    entries = entries || [];
+
+    if(managerDates[s.key] === undefined){
+      managerDates[s.key] = new Date().toISOString().slice(0,10);
+    }
+    const dVal = managerDates[s.key];
+    const filteredEntries = dVal ? entries.filter(e => e.dateISO === dVal) : entries;
+    const dayLabelText = dVal
+      ? (new Date(dVal + 'T00:00:00')).toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'2-digit', day:'2-digit'})
+      : 'كل الفترات';
+
+    const totalWeight = filteredEntries.reduce((a,e)=>a+e.weight*e.qty, 0);
+    const totalQty = filteredEntries.reduce((a,e)=>a+e.qty, 0);
+    let extraSum = (s.key === 'khaam') ? buildKhaamExtraHtml(filteredEntries) : '';
+
+    html += `
+      <div class="panel" style="margin-bottom:16px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <h3 class="display" style="color:var(--gold-bright);font-size:17px;margin:0;">${s.icon} ${s.name}</h3>
+          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+            <button class="iconbtn" onclick="mgrNav('${s.key}','prev')">◀</button>
+            <input type="date" class="mgrDateInput" value="${dVal}" onchange="mgrSetDate('${s.key}', this.value)">
+            <button class="iconbtn" onclick="mgrNav('${s.key}','next')">▶</button>
+            <button class="iconbtn" onclick="mgrNav('${s.key}','clear')">الكل</button>
+          </div>
+        </div>
+        <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">${dayLabelText}</div>
+        <div class="summary" style="margin-bottom:12px;">
+          <div class="sumBox"><div class="n">${totalWeight.toFixed(3)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+          <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
+          <div class="sumBox"><div class="n">${filteredEntries.length}</div><div class="l">عدد القيود</div></div>
+          ${extraSum}
+        </div>
+        ${buildBreakdownHtml(s.key, filteredEntries)}
+      </div>`;
+  }
+  $('managerOverview').innerHTML = html;
+}
+
+function mgrNav(key, dir){
+  if(dir === 'clear'){
+    managerDates[key] = '';
+  }else{
+    const cur = managerDates[key] || new Date().toISOString().slice(0,10);
+    const d = new Date(cur + 'T00:00:00');
+    d.setDate(d.getDate() + (dir === 'prev' ? -1 : 1));
+    managerDates[key] = d.toISOString().slice(0,10);
+  }
+  renderManagerOverview();
+}
+function mgrSetDate(key, val){
+  managerDates[key] = val;
+  renderManagerOverview();
 }
 
 /* ================= SECTION VIEW ================= */
@@ -786,6 +874,7 @@ $('searchInput').addEventListener('input', ()=>renderTable());
 $('dateFilterInput').addEventListener('change', ()=>renderTable());
 
 $('addBtn').addEventListener('click', async ()=>{
+ try{
   const type = $('f_type').value;
   const isTola = type === 'توله';
   const custom = $('f_custom').value.trim();
@@ -801,14 +890,23 @@ $('addBtn').addEventListener('click', async ()=>{
   if(isNaN(weight) || weight <= 0){ alert('من فضلك أدخل وزن صحيح'); return; }
 
   const now = new Date();
+  let chosenDateISO = $('dateFilterInput').value;
+  if(!chosenDateISO || !/^\d{4}-\d{2}-\d{2}$/.test(chosenDateISO)){
+    chosenDateISO = now.toISOString().slice(0,10);
+  }
+  let chosenDateObj = new Date(chosenDateISO + 'T00:00:00');
+  if(isNaN(chosenDateObj.getTime())){
+    chosenDateISO = now.toISOString().slice(0,10);
+    chosenDateObj = now;
+  }
   const entry = {
     id: uid(),
     type: type === 'أخرى' ? custom : type,
     karat,
     voucher, time,
     weight, qty, barcode, notes,
-    date: todayStr(),
-    dateISO: now.toISOString().slice(0,10),
+    date: chosenDateObj.toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'2-digit', day:'2-digit'}),
+    dateISO: chosenDateISO,
     by: currentRole,
     ts: now.getTime()
   };
@@ -832,6 +930,10 @@ $('addBtn').addEventListener('click', async ()=>{
   $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
   $('f_voucher').value=''; $('f_time').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
   $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
+ }catch(err){
+  console.error('addBtn error:', err);
+  alert('حصل خطأ أثناء إضافة القيد: ' + (err && err.message ? err.message : err));
+ }
 });
 
 async function openSection(key){
@@ -866,6 +968,85 @@ async function openSection(key){
   }).catch(e=>console.warn('background section refresh failed', e));
 }
 
+function byTypeBreakdown(list){
+  const byT = {};
+  list.forEach(e=>{
+    const key = e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
+    if(!byT[key]) byT[key] = {weight:0, qty:0};
+    byT[key].weight += e.weight*e.qty;
+    byT[key].qty += e.qty;
+  });
+  return byT;
+}
+function renderBreakdownRows(byT){
+  const keys = Object.keys(byT);
+  let rows = keys.map(k => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:13.5px;">
+      <span style="color:var(--gold-bright);font-weight:700;">العملة: ${k}</span>
+      <span>${byT[k].qty} قطعة</span>
+      <span>${byT[k].weight.toFixed(3)} جم</span>
+    </div>`).join('');
+  if(!rows) rows = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div>';
+  return rows;
+}
+function movementBox(title, byT){
+  const tQty = Object.values(byT).reduce((a,x)=>a+x.qty,0);
+  const tWeight = Object.values(byT).reduce((a,x)=>a+x.weight,0);
+  const now = new Date();
+  const dayLabel = now.toLocaleDateString('ar-EG', {weekday:'long'}) + ' — ' + now.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
+  return `
+    <div class="panel" style="margin-bottom:14px;">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+        ${title ? `<h4 style="font-size:16px;color:var(--gold-bright);margin:0;">${title}</h4>` : '<span></span>'}
+        <span style="font-size:12.5px;color:var(--muted);">${dayLabel}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:2px solid var(--gold);font-size:14px;font-weight:700;">
+        <span>الإجمالي</span>
+        <span>${tQty} قطعة</span>
+        <span>${tWeight.toFixed(3)} جم</span>
+      </div>
+      ${renderBreakdownRows(byT)}
+    </div>`;
+}
+
+function buildBreakdownHtml(sectionKey, entries){
+  if(MOVEMENT_OPTIONS[sectionKey]){
+    const opts = MOVEMENT_OPTIONS[sectionKey];
+    const groups = opts.map(o => byTypeBreakdown(entries.filter(e=>e.movement===o)));
+    let html = '';
+    opts.forEach((o,i)=>{ html += movementBox(o, groups[i]); });
+
+    if(!HIDE_REMAINING.has(sectionKey)){
+      const remT = {};
+      const allKeys = new Set();
+      groups.forEach(g=>Object.keys(g).forEach(k=>allKeys.add(k)));
+      allKeys.forEach(k=>{
+        let q = (groups[0][k]||{}).qty || 0, w = (groups[0][k]||{}).weight || 0;
+        for(let i=1;i<groups.length;i++){
+          q -= (groups[i][k]||{}).qty || 0;
+          w -= (groups[i][k]||{}).weight || 0;
+        }
+        remT[k] = {qty:q, weight:w};
+      });
+      const sName = (SECTIONS.find(x=>x.key===sectionKey)||{}).name || '';
+      html += movementBox('الباقي في ' + sName, remT);
+    }
+    return html;
+  }
+  const byT = byTypeBreakdown(entries);
+  return movementBox('', byT);
+}
+function buildKhaamExtraHtml(entries){
+  const dulashTotal = entries.reduce((a,e)=>a+(e.dulash||0),0);
+  const g9999 = entries.reduce((a,e)=>a+(e.gold9999||0),0);
+  const g875 = entries.reduce((a,e)=>a+(e.gold875||0),0);
+  return `
+    <div class="sumBox"><div class="n">${dulashTotal}</div><div class="l">إجمالي عدد الدلوش</div></div>
+    <div class="sumBox"><div class="n">${g9999.toFixed(3)}</div><div class="l">ذهب خام 999.9 (جم)</div></div>
+    <div class="sumBox"><div class="n">${g875.toFixed(3)}</div><div class="l">ذهب خام 875 (جم)</div></div>
+  `;
+}
+
 function renderTable(){
   let entries = sectionCache[currentSectionKey] || [];
   const dateFilterVal = $('dateFilterInput').value;
@@ -890,82 +1071,9 @@ function renderTable(){
     <div class="sumBox"><div class="n">${entries.length}</div><div class="l">عدد القيود</div></div>
   `;
 
-  function byTypeBreakdown(list){
-    const byT = {};
-    list.forEach(e=>{
-      const key = e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
-      if(!byT[key]) byT[key] = {weight:0, qty:0};
-      byT[key].weight += e.weight*e.qty;
-      byT[key].qty += e.qty;
-    });
-    return byT;
-  }
-  function renderBreakdownRows(byT){
-    const keys = Object.keys(byT);
-    let rows = keys.map(k => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:13.5px;">
-        <span style="color:var(--gold-bright);font-weight:700;">العملة: ${k}</span>
-        <span>${byT[k].qty} قطعة</span>
-        <span>${byT[k].weight.toFixed(3)} جم</span>
-      </div>`).join('');
-    if(!rows) rows = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div>';
-    return rows;
-  }
-  function movementBox(title, byT){
-    const tQty = Object.values(byT).reduce((a,x)=>a+x.qty,0);
-    const tWeight = Object.values(byT).reduce((a,x)=>a+x.weight,0);
-    const now = new Date();
-    const dayLabel = now.toLocaleDateString('ar-EG', {weekday:'long'}) + ' — ' + now.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
-    return `
-      <div class="panel" style="margin-bottom:14px;">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
-          ${title ? `<h4 style="font-size:16px;color:var(--gold-bright);margin:0;">${title}</h4>` : '<span></span>'}
-          <span style="font-size:12.5px;color:var(--muted);">${dayLabel}</span>
-        </div>
-        <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:2px solid var(--gold);font-size:14px;font-weight:700;">
-          <span>الإجمالي</span>
-          <span>${tQty} قطعة</span>
-          <span>${tWeight.toFixed(3)} جم</span>
-        </div>
-        ${renderBreakdownRows(byT)}
-      </div>`;
-  }
-
-  if(MOVEMENT_OPTIONS[currentSectionKey]){
-    const opts = MOVEMENT_OPTIONS[currentSectionKey];
-    const groups = opts.map(o => byTypeBreakdown(entries.filter(e=>e.movement===o)));
-    let html = '';
-    opts.forEach((o,i)=>{ html += movementBox(o, groups[i]); });
-
-    if(!HIDE_REMAINING.has(currentSectionKey)){
-      const remT = {};
-      const allKeys = new Set();
-      groups.forEach(g=>Object.keys(g).forEach(k=>allKeys.add(k)));
-      allKeys.forEach(k=>{
-        let q = (groups[0][k]||{}).qty || 0, w = (groups[0][k]||{}).weight || 0;
-        for(let i=1;i<groups.length;i++){
-          q -= (groups[i][k]||{}).qty || 0;
-          w -= (groups[i][k]||{}).weight || 0;
-        }
-        remT[k] = {qty:q, weight:w};
-      });
-      const sName = (SECTIONS.find(x=>x.key===currentSectionKey)||{}).name || '';
-      html += movementBox('الباقي في ' + sName, remT);
-    }
-    $('movementBreakdown').innerHTML = html;
-  }else{
-    const byT = byTypeBreakdown(entries);
-    $('movementBreakdown').innerHTML = movementBox('', byT);
-  }
+  $('movementBreakdown').innerHTML = buildBreakdownHtml(currentSectionKey, entries);
   if(currentSectionKey === 'khaam'){
-    const dulashTotal = entries.reduce((a,e)=>a+(e.dulash||0),0);
-    const g9999 = entries.reduce((a,e)=>a+(e.gold9999||0),0);
-    const g875 = entries.reduce((a,e)=>a+(e.gold875||0),0);
-    sumHtml += `
-      <div class="sumBox"><div class="n">${dulashTotal}</div><div class="l">إجمالي عدد الدلوش</div></div>
-      <div class="sumBox"><div class="n">${g9999.toFixed(3)}</div><div class="l">ذهب خام 999.9 (جم)</div></div>
-      <div class="sumBox"><div class="n">${g875.toFixed(3)}</div><div class="l">ذهب خام 875 (جم)</div></div>
-    `;
+    sumHtml += buildKhaamExtraHtml(entries);
   }
   $('summaryStrip').innerHTML = sumHtml;
 
@@ -1012,40 +1120,97 @@ function renderTable(){
 }
 
 /* ================= DAILY REPORT ================= */
+let reportPeriod = 'day'; // 'day' | 'week' | 'month'
+
+function setPeriod(p){
+  reportPeriod = p;
+  $('reportDate').style.display = p === 'month' ? 'none' : 'inline-block';
+  $('reportMonth').style.display = p === 'month' ? 'inline-block' : 'none';
+  const map = {day:'periodDayBtn', week:'periodWeekBtn', month:'periodMonthBtn'};
+  ['day','week','month'].forEach(k=>{
+    $(map[k]).style.borderColor = (k === p) ? 'var(--gold)' : 'var(--line)';
+    $(map[k]).style.color = (k === p) ? 'var(--gold-bright)' : 'var(--muted)';
+  });
+  renderReport();
+}
+$('periodDayBtn').addEventListener('click', ()=>setPeriod('day'));
+$('periodWeekBtn').addEventListener('click', ()=>setPeriod('week'));
+$('periodMonthBtn').addEventListener('click', ()=>setPeriod('month'));
+
+function getReportRange(){
+  if(reportPeriod === 'month'){
+    const val = $('reportMonth').value || new Date().toISOString().slice(0,7);
+    const [y,m] = val.split('-').map(Number);
+    const start = new Date(y, m-1, 1);
+    const end = new Date(y, m, 0);
+    const label = start.toLocaleDateString('ar-EG', {year:'numeric', month:'long'});
+    return {start, end, label};
+  }
+  const dVal = $('reportDate').value || new Date().toISOString().slice(0,10);
+  const d = new Date(dVal + 'T00:00:00');
+  if(reportPeriod === 'week'){
+    const start = new Date(d); start.setDate(d.getDate() - d.getDay());
+    const end = new Date(start); end.setDate(start.getDate() + 6);
+    const label = 'من ' + start.toLocaleDateString('ar-EG') + ' إلى ' + end.toLocaleDateString('ar-EG');
+    return {start, end, label};
+  }
+  const weekday = d.toLocaleDateString('ar-EG', {weekday:'long'});
+  const label = weekday + ' — ' + d.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
+  return {start:d, end:d, label};
+}
+
 $('openReportBtn').addEventListener('click', async ()=>{
-  $('reportDate').value = new Date().toISOString().slice(0,10);
+  const today = new Date();
+  $('reportDate').value = today.toISOString().slice(0,10);
+  $('reportMonth').value = today.toISOString().slice(0,7);
   $('dashboardView').style.display = 'none';
   $('sectionView').style.display = 'none';
   $('reportView').style.display = 'block';
-  await renderReport();
+  setPeriod('day');
 });
 $('reportBackBtn').addEventListener('click', renderDashboard);
 $('reportDate').addEventListener('change', renderReport);
+$('reportMonth').addEventListener('change', renderReport);
 $('reportPrevBtn').addEventListener('click', ()=>{
-  const d = new Date(($('reportDate').value || new Date().toISOString().slice(0,10)) + 'T00:00:00');
-  d.setDate(d.getDate() - 1);
-  $('reportDate').value = d.toISOString().slice(0,10);
+  if(reportPeriod === 'month'){
+    const val = $('reportMonth').value || new Date().toISOString().slice(0,7);
+    const [y,m] = val.split('-').map(Number);
+    const d = new Date(y, m-2, 1);
+    $('reportMonth').value = d.toISOString().slice(0,7);
+  }else{
+    const stepDays = reportPeriod === 'week' ? 7 : 1;
+    const d = new Date(($('reportDate').value || new Date().toISOString().slice(0,10)) + 'T00:00:00');
+    d.setDate(d.getDate() - stepDays);
+    $('reportDate').value = d.toISOString().slice(0,10);
+  }
   renderReport();
 });
 $('reportNextBtn').addEventListener('click', ()=>{
-  const d = new Date(($('reportDate').value || new Date().toISOString().slice(0,10)) + 'T00:00:00');
-  d.setDate(d.getDate() + 1);
-  $('reportDate').value = d.toISOString().slice(0,10);
+  if(reportPeriod === 'month'){
+    const val = $('reportMonth').value || new Date().toISOString().slice(0,7);
+    const [y,m] = val.split('-').map(Number);
+    const d = new Date(y, m, 1);
+    $('reportMonth').value = d.toISOString().slice(0,7);
+  }else{
+    const stepDays = reportPeriod === 'week' ? 7 : 1;
+    const d = new Date(($('reportDate').value || new Date().toISOString().slice(0,10)) + 'T00:00:00');
+    d.setDate(d.getDate() + stepDays);
+    $('reportDate').value = d.toISOString().slice(0,10);
+  }
   renderReport();
 });
 
 async function renderReport(){
-  const dateISO = $('reportDate').value || new Date().toISOString().slice(0,10);
-  const dObj = new Date(dateISO + 'T00:00:00');
-  const weekday = dObj.toLocaleDateString('ar-EG', {weekday:'long'});
-  const prettyDate = dObj.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
-  $('reportDayLabel').textContent = weekday + ' — ' + prettyDate;
+  const {start, end, label} = getReportRange();
+  $('reportDayLabel').textContent = label;
+  const startISO = start.toISOString().slice(0,10);
+  const endISO = end.toISOString().slice(0,10);
 
   let all = [];
   for(const s of SECTIONS){
     let entries = [];
     try{ entries = await loadSection(s.key); }catch(e){ console.warn('report load fail', s.key, e); }
-    (entries||[]).filter(e => e.dateISO === dateISO).forEach(e => all.push({...e, sectionName:s.name, sectionIcon:s.icon}));
+    (entries||[]).filter(e => e.dateISO >= startISO && e.dateISO <= endISO).forEach(e => all.push({...e, sectionName:s.name, sectionIcon:s.icon}));
   }
 
   const totalWeight = all.reduce((a,e)=>a + e.weight*e.qty, 0);
@@ -1087,7 +1252,7 @@ async function renderReport(){
   });
 
   lastReportRows = all;
-  lastReportDate = dateISO;
+  lastReportDate = label;
 }
 
 /* ================= PRINTING ================= */
