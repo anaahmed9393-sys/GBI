@@ -259,6 +259,41 @@
   select{cursor:pointer;}
   ::placeholder{color:#5c5546;}
 
+  .dateNavGroup{
+    display:flex;align-items:center;gap:6px;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:10px;
+    padding:5px 6px;
+    box-shadow:0 3px 10px rgba(0,0,0,0.25);
+    position:relative;
+  }
+  .dateNavGroup .dateNavBtn{
+    padding:9px 14px;
+    border-radius:7px;
+    font-size:14px;
+    position:relative;
+    z-index:3;
+    flex-shrink:0;
+    touch-action:manipulation;
+    min-width:40px;
+    cursor:pointer;
+  }
+  .dateNavGroup input[type=date]{
+    background:#0f0c09;
+    border:1px solid var(--line);
+    border-radius:7px;
+    padding:7px 10px;
+    color:var(--text);
+    font-family:'Tajawal',sans-serif;
+    font-size:13px;
+    color-scheme:dark;
+    position:relative;
+    z-index:1;
+    max-width:150px;
+  }
+  .dateNavGroup input[type=date]:focus{border-color:var(--gold);outline:none;}
+
   footer.foot{
     text-align:center;color:var(--muted);font-size:11.5px;padding:18px;border-top:1px solid var(--line);
   }
@@ -430,7 +465,12 @@
         </div>
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
           <input type="search" id="searchInput" placeholder="بحث بالاسم أو رقم الباركود...">
-          <input type="date" id="dateFilterInput" title="بحث بالتاريخ — واختيار تاريخ هنا يسجّل أي قيد جديد بنفس التاريخ ده">
+          <div class="dateNavGroup">
+            <button class="iconbtn dateNavBtn" id="sectionDatePrevBtn">◀</button>
+            <input type="date" id="dateFilterInput" title="اختيار تاريخ هنا يسجّل أي قيد جديد بنفس التاريخ ده">
+            <button class="iconbtn dateNavBtn" id="sectionDateNextBtn">▶</button>
+            <button class="iconbtn dateNavBtn" id="sectionDateTodayBtn">النهاردة</button>
+          </div>
           <button class="iconbtn" id="printSectionBtn">🖨️ طباعة</button>
         </div>
       </div>
@@ -584,7 +624,7 @@ const SECTIONS = [
 ];
 const MOVEMENT_OPTIONS = {
   damgha:  ['مسلم للدمغة', 'وارد من الدمغة', 'كسر الدمغة'],
-  baraqod: ['مسلم للباركود', 'مرتج من الباركود'],
+  baraqod: ['مسلم للباركود', 'مرتجع من الباركود'],
   taghlif: ['مسلم للتغليف', 'كسر التغليف']
 };
 const HIDE_REMAINING = new Set(['baraqod']);
@@ -795,9 +835,7 @@ async function renderManagerOverview(){
     }
     const dVal = managerDates[s.key];
     const filteredEntries = dVal ? entries.filter(e => e.dateISO === dVal) : entries;
-    const dayLabelText = dVal
-      ? (new Date(dVal + 'T00:00:00')).toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'2-digit', day:'2-digit'})
-      : 'كل الفترات';
+    const dayLabelText = dVal ? formatDDMMYYYY(dVal) : 'كل الفترات';
 
     const totalWeight = filteredEntries.reduce((a,e)=>a+e.weight*e.qty, 0);
     const totalQty = filteredEntries.reduce((a,e)=>a+e.qty, 0);
@@ -807,11 +845,11 @@ async function renderManagerOverview(){
       <div class="panel" style="margin-bottom:16px;">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
           <h3 class="display" style="color:var(--gold-bright);font-size:17px;margin:0;">${s.icon} ${s.name}</h3>
-          <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-            <button class="iconbtn" onclick="mgrNav('${s.key}','prev')">◀</button>
-            <input type="date" class="mgrDateInput" value="${dVal}" onchange="mgrSetDate('${s.key}', this.value)">
-            <button class="iconbtn" onclick="mgrNav('${s.key}','next')">▶</button>
-            <button class="iconbtn" onclick="mgrNav('${s.key}','clear')">الكل</button>
+          <div class="dateNavGroup">
+            <button class="iconbtn dateNavBtn" data-nav="prev" data-section="${s.key}">◀</button>
+            <input type="date" class="mgrDateInput" data-section="${s.key}" value="${dVal}">
+            <button class="iconbtn dateNavBtn" data-nav="next" data-section="${s.key}">▶</button>
+            <button class="iconbtn dateNavBtn" data-nav="clear" data-section="${s.key}">الكل</button>
           </div>
         </div>
         <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">${dayLabelText}</div>
@@ -821,7 +859,7 @@ async function renderManagerOverview(){
           <div class="sumBox"><div class="n">${filteredEntries.length}</div><div class="l">عدد القيود</div></div>
           ${extraSum}
         </div>
-        ${buildBreakdownHtml(s.key, filteredEntries)}
+        ${buildBreakdownHtml(s.key, filteredEntries, dayLabelText)}
       </div>`;
   }
   $('managerOverview').innerHTML = html;
@@ -842,6 +880,16 @@ function mgrSetDate(key, val){
   managerDates[key] = val;
   renderManagerOverview();
 }
+$('managerOverview').addEventListener('click', (e)=>{
+  const btn = e.target.closest('[data-nav]');
+  if(!btn) return;
+  mgrNav(btn.getAttribute('data-section'), btn.getAttribute('data-nav'));
+});
+$('managerOverview').addEventListener('change', (e)=>{
+  if(e.target.classList.contains('mgrDateInput')){
+    mgrSetDate(e.target.getAttribute('data-section'), e.target.value);
+  }
+});
 
 /* ================= SECTION VIEW ================= */
 $('backBtn').addEventListener('click', renderDashboard);
@@ -861,11 +909,9 @@ function applyTypeSelection(){
   $('f_karat').value = k ? (k + ' عيار') : '';
 
   const fixedWeights = {'جنيه':8, 'نص جنيه':4, 'ربع جنيه':2};
-  $('f_weight').readOnly = false;
   if(!isTola) $('f_weight').value = '';
   if(fixedWeights[t] !== undefined){
     $('f_weight').value = fixedWeights[t];
-    $('f_weight').readOnly = true;
   }
 }
 $('f_type').addEventListener('change', applyTypeSelection);
@@ -930,6 +976,7 @@ $('addBtn').addEventListener('click', async ()=>{
   $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
   $('f_voucher').value=''; $('f_time').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
   $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
+  applyTypeSelection();
  }catch(err){
   console.error('addBtn error:', err);
   alert('حصل خطأ أثناء إضافة القيد: ' + (err && err.message ? err.message : err));
@@ -989,16 +1036,15 @@ function renderBreakdownRows(byT){
   if(!rows) rows = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div>';
   return rows;
 }
-function movementBox(title, byT){
+function movementBox(title, byT, dateLabel){
   const tQty = Object.values(byT).reduce((a,x)=>a+x.qty,0);
   const tWeight = Object.values(byT).reduce((a,x)=>a+x.weight,0);
-  const now = new Date();
-  const dayLabel = now.toLocaleDateString('ar-EG', {weekday:'long'}) + ' — ' + now.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
+  const label = dateLabel || formatDDMMYYYY(new Date().toISOString().slice(0,10));
   return `
     <div class="panel" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
         ${title ? `<h4 style="font-size:16px;color:var(--gold-bright);margin:0;">${title}</h4>` : '<span></span>'}
-        <span style="font-size:12.5px;color:var(--muted);">${dayLabel}</span>
+        <span style="font-size:12.5px;color:var(--muted);">${label}</span>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:2px solid var(--gold);font-size:14px;font-weight:700;">
         <span>الإجمالي</span>
@@ -1009,12 +1055,12 @@ function movementBox(title, byT){
     </div>`;
 }
 
-function buildBreakdownHtml(sectionKey, entries){
+function buildBreakdownHtml(sectionKey, entries, dateLabel){
   if(MOVEMENT_OPTIONS[sectionKey]){
     const opts = MOVEMENT_OPTIONS[sectionKey];
     const groups = opts.map(o => byTypeBreakdown(entries.filter(e=>e.movement===o)));
     let html = '';
-    opts.forEach((o,i)=>{ html += movementBox(o, groups[i]); });
+    opts.forEach((o,i)=>{ html += movementBox(o, groups[i], dateLabel); });
 
     if(!HIDE_REMAINING.has(sectionKey)){
       const remT = {};
@@ -1029,12 +1075,12 @@ function buildBreakdownHtml(sectionKey, entries){
         remT[k] = {qty:q, weight:w};
       });
       const sName = (SECTIONS.find(x=>x.key===sectionKey)||{}).name || '';
-      html += movementBox('الباقي في ' + sName, remT);
+      html += movementBox('الباقي في ' + sName, remT, dateLabel);
     }
     return html;
   }
   const byT = byTypeBreakdown(entries);
-  return movementBox('', byT);
+  return movementBox('', byT, dateLabel);
 }
 function buildKhaamExtraHtml(entries){
   const dulashTotal = entries.reduce((a,e)=>a+(e.dulash||0),0);
@@ -1046,6 +1092,30 @@ function buildKhaamExtraHtml(entries){
     <div class="sumBox"><div class="n">${g875.toFixed(3)}</div><div class="l">ذهب خام 875 (جم)</div></div>
   `;
 }
+
+function formatDDMMYYYY(dateISO){
+  const d = new Date(dateISO + 'T00:00:00');
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const yyyy = d.getFullYear();
+  const weekday = d.toLocaleDateString('ar-EG', {weekday:'long'});
+  return weekday + ' ' + dd + '/' + mm + '/' + yyyy;
+}
+
+function sectionDateNav(dir){
+  if(dir === 'clear'){
+    $('dateFilterInput').value = '';
+  }else{
+    const cur = $('dateFilterInput').value || new Date().toISOString().slice(0,10);
+    const d = new Date(cur + 'T00:00:00');
+    d.setDate(d.getDate() + (dir === 'prev' ? -1 : 1));
+    $('dateFilterInput').value = d.toISOString().slice(0,10);
+  }
+  renderTable();
+}
+$('sectionDatePrevBtn').addEventListener('click', ()=>sectionDateNav('prev'));
+$('sectionDateNextBtn').addEventListener('click', ()=>sectionDateNav('next'));
+$('sectionDateTodayBtn').addEventListener('click', ()=>sectionDateNav('clear'));
 
 function renderTable(){
   let entries = sectionCache[currentSectionKey] || [];
@@ -1071,7 +1141,8 @@ function renderTable(){
     <div class="sumBox"><div class="n">${entries.length}</div><div class="l">عدد القيود</div></div>
   `;
 
-  $('movementBreakdown').innerHTML = buildBreakdownHtml(currentSectionKey, entries);
+  const breakdownDateLabel = dateFilterVal ? formatDDMMYYYY(dateFilterVal) : 'كل التواريخ';
+  $('movementBreakdown').innerHTML = buildBreakdownHtml(currentSectionKey, entries, breakdownDateLabel);
   if(currentSectionKey === 'khaam'){
     sumHtml += buildKhaamExtraHtml(entries);
   }
