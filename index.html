@@ -299,10 +299,8 @@
   }
 
   @media (max-width:640px){
-    table thead{display:none;}
-    tbody tr{display:block;border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:8px 4px;}
-    tbody td{display:flex;justify-content:space-between;border:none;padding:8px 12px;font-size:13px;}
-    tbody td::before{content:attr(data-label);color:var(--muted);font-size:11.5px;}
+    table{font-size:12px;}
+    thead th, tbody td{padding:8px 8px;white-space:nowrap;}
   }
   @media (prefers-reduced-motion: reduce){
     *{animation:none !important;transition:none !important;}
@@ -436,13 +434,10 @@
           <thead>
             <tr>
               <th>الخانة</th>
-              <th>السند</th>
-              <th>الساعة</th>
               <th>الصنف</th>
               <th>العيار</th>
               <th>الوزن (جم)</th>
               <th>العدد</th>
-              <th>الباركود</th>
               <th>بواسطة</th>
               <th>ملاحظات</th>
             </tr>
@@ -495,14 +490,6 @@
             <label>اسم الصنف (لو أخرى)</label>
             <input type="text" id="f_custom" placeholder="اكتب اسم الصنف">
           </div>
-          <div class="field" style="margin-bottom:0;">
-            <label>رقم السند</label>
-            <input type="text" id="f_voucher" placeholder="اختياري">
-          </div>
-          <div class="field" style="margin-bottom:0;">
-            <label>الساعة</label>
-            <input type="time" id="f_time">
-          </div>
           <div class="field" style="margin-bottom:0;" id="f_weight_normal_wrap">
             <label>الوزن (جرام)</label>
             <input type="number" step="0.001" id="f_weight" placeholder="مثال: 8.000">
@@ -547,10 +534,6 @@
             <label>كمية الذهب الخام 875 (جم)</label>
             <input type="number" step="0.001" id="f_gold875" placeholder="اختياري">
           </div>
-          <div class="field" style="margin-bottom:0;">
-            <label>رقم الباركود</label>
-            <input type="text" id="f_barcode" placeholder="اختياري">
-          </div>
           <div class="field full" style="margin-bottom:0;">
             <label>ملاحظات</label>
             <input type="text" id="f_notes" placeholder="اختياري">
@@ -566,13 +549,10 @@
           <thead>
             <tr>
               <th>التاريخ</th>
-              <th>السند</th>
-              <th>الساعة</th>
               <th>الصنف</th>
               <th>العيار</th>
               <th>الوزن (جم)</th>
               <th>العدد</th>
-              <th>الباركود</th>
               <th>ملاحظات</th>
               <th></th>
             </tr>
@@ -919,17 +899,17 @@ $('f_type').addEventListener('change', applyTypeSelection);
 $('searchInput').addEventListener('input', ()=>renderTable());
 $('dateFilterInput').addEventListener('change', ()=>renderTable());
 
+let editingEntryId = null;
+let editingEntryOriginal = null;
+
 $('addBtn').addEventListener('click', async ()=>{
  try{
   const type = $('f_type').value;
   const isTola = type === 'توله';
   const custom = $('f_custom').value.trim();
-  const voucher = $('f_voucher').value.trim();
-  const time = $('f_time').value;
   const weight = isTola ? parseFloat($('f_weight_tola').value) : parseFloat($('f_weight').value);
   const qty = parseInt($('f_qty').value) || 1;
   const karat = karatForType(type);
-  const barcode = $('f_barcode').value.trim();
   const notes = $('f_notes').value.trim();
 
   if(type === 'أخرى' && !custom){ alert('اكتب اسم الصنف'); return; }
@@ -949,8 +929,7 @@ $('addBtn').addEventListener('click', async ()=>{
     id: uid(),
     type: type === 'أخرى' ? custom : type,
     karat,
-    voucher, time,
-    weight, qty, barcode, notes,
+    weight, qty, notes,
     date: chosenDateObj.toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'2-digit', day:'2-digit'}),
     dateISO: chosenDateISO,
     by: currentRole,
@@ -969,12 +948,27 @@ $('addBtn').addEventListener('click', async ()=>{
     if(!isNaN(g875)) entry.gold875 = g875;
   }
 
-  sectionCache[currentSectionKey].unshift(entry);
+  if(editingEntryId){
+    entry.id = editingEntryId;
+    entry.date = editingEntryOriginal.date;
+    entry.dateISO = editingEntryOriginal.dateISO;
+    entry.ts = editingEntryOriginal.ts;
+    entry.by = editingEntryOriginal.by;
+    const idx = sectionCache[currentSectionKey].findIndex(e=>e.id===editingEntryId);
+    if(idx !== -1) sectionCache[currentSectionKey][idx] = entry;
+    else sectionCache[currentSectionKey].unshift(entry);
+    editingEntryId = null;
+    editingEntryOriginal = null;
+    $('addBtn').textContent = 'إضافة القيد';
+  }else{
+    sectionCache[currentSectionKey].unshift(entry);
+  }
+
   renderTable();
   persistSection(currentSectionKey).catch(e=>console.warn('background persist failed', e));
 
   $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
-  $('f_voucher').value=''; $('f_time').value=''; $('f_qty').value='1'; $('f_barcode').value=''; $('f_notes').value=''; $('f_custom').value='';
+  $('f_qty').value='1'; $('f_notes').value=''; $('f_custom').value='';
   $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
   applyTypeSelection();
  }catch(err){
@@ -985,6 +979,9 @@ $('addBtn').addEventListener('click', async ()=>{
 
 async function openSection(key){
   currentSectionKey = key;
+  editingEntryId = null;
+  editingEntryOriginal = null;
+  $('addBtn').textContent = 'إضافة القيد';
   const s = SECTIONS.find(x=>x.key===key);
   $('sectionTitle').textContent = s.icon + '  ' + s.name;
   $('searchInput').value = '';
@@ -1128,7 +1125,6 @@ function renderTable(){
   const q = $('searchInput').value.trim().toLowerCase();
   const filtered = q ? entries.filter(e =>
       (e.type||'').toLowerCase().includes(q) ||
-      (e.barcode||'').toLowerCase().includes(q) ||
       (e.notes||'').toLowerCase().includes(q)
     ) : entries;
 
@@ -1163,19 +1159,22 @@ function renderTable(){
     if(khaamParts.length) extraNotes = '<br><span style="color:var(--muted);font-size:11px;">' + khaamParts.join(' · ') + '</span>';
     tr.innerHTML = `
       <td data-label="التاريخ">${e.date}</td>
-      <td data-label="السند">${e.voucher || '—'}</td>
-      <td data-label="الساعة">${e.time || '—'}</td>
       <td data-label="الصنف"><span class="tag">${e.type}</span>${movementTag}</td>
       <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
       <td data-label="الوزن">${e.weight.toFixed(3)}</td>
       <td data-label="العدد">${e.qty}</td>
-      <td data-label="الباركود">${e.barcode || '—'}</td>
       <td data-label="ملاحظات">${(e.notes || '—')}${extraNotes}</td>
       <td data-label="">
-        ${currentRole === 'manager' ? '' : `<div class="rowActions"><button class="del" data-id="${e.id}">حذف</button></div>`}
+        ${currentRole === 'manager' ? '' : `<div class="rowActions"><button class="edit" data-id="${e.id}">تعديل</button><button class="del" data-id="${e.id}">حذف</button></div>`}
       </td>
     `;
     tbody.appendChild(tr);
+  });
+
+  tbody.querySelectorAll('.edit').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      startEdit(btn.getAttribute('data-id'));
+    });
   });
 
   tbody.querySelectorAll('.del').forEach(btn=>{
@@ -1188,6 +1187,42 @@ function renderTable(){
       showToast('تم حذف القيد');
     });
   });
+}
+
+function startEdit(id){
+  const entry = sectionCache[currentSectionKey].find(e=>e.id===id);
+  if(!entry) return;
+  editingEntryId = id;
+  editingEntryOriginal = entry;
+
+  const knownTypes = ['جنيه','نص جنيه','ربع جنيه','توله','أخرى'];
+  if(knownTypes.includes(entry.type)){
+    $('f_type').value = entry.type;
+  }else{
+    $('f_type').value = 'أخرى';
+    $('f_custom').value = entry.type;
+  }
+  applyTypeSelection();
+
+  if(entry.type === 'توله'){
+    $('f_weight_tola').value = String(entry.weight);
+  }else{
+    $('f_weight').value = entry.weight;
+  }
+  $('f_qty').value = entry.qty;
+  $('f_notes').value = entry.notes || '';
+
+  if(MOVEMENT_OPTIONS[currentSectionKey] && entry.movement){
+    $('f_movement').value = entry.movement;
+  }
+  if(currentSectionKey === 'khaam'){
+    $('f_dulash').value = entry.dulash !== undefined ? entry.dulash : '';
+    $('f_gold9999').value = entry.gold9999 !== undefined ? entry.gold9999 : '';
+    $('f_gold875').value = entry.gold875 !== undefined ? entry.gold875 : '';
+  }
+
+  $('addBtn').textContent = 'حفظ التعديل';
+  $('addEntryPanel').scrollIntoView({behavior:'smooth', block:'start'});
 }
 
 /* ================= DAILY REPORT ================= */
@@ -1309,13 +1344,10 @@ async function renderReport(){
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td data-label="الخانة">${e.sectionIcon} ${e.sectionName}</td>
-      <td data-label="السند">${e.voucher || '—'}</td>
-      <td data-label="الساعة">${e.time || '—'}</td>
       <td data-label="الصنف"><span class="tag">${e.type}</span></td>
       <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
       <td data-label="الوزن">${e.weight.toFixed(3)}</td>
       <td data-label="العدد">${e.qty}</td>
-      <td data-label="الباركود">${e.barcode || '—'}</td>
       <td data-label="بواسطة">${ROLE_LABELS[e.by] || e.by || '—'}</td>
       <td data-label="ملاحظات">${e.notes || '—'}</td>
     `;
@@ -1353,13 +1385,10 @@ $('printAllBtn').addEventListener('click', async ()=>{
     const rows = entries.map(e=>`
       <tr>
         <td>${e.date}</td>
-        <td>${e.voucher || '—'}</td>
-        <td>${e.time || '—'}</td>
         <td>${e.type}${e.movement ? ' — ' + e.movement : ''}</td>
         <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
         <td>${e.weight.toFixed(3)}</td>
         <td>${e.qty}</td>
-        <td>${e.barcode || '—'}</td>
         <td>${e.notes || '—'}</td>
       </tr>`).join('');
 
@@ -1367,8 +1396,8 @@ $('printAllBtn').addEventListener('click', async ()=>{
       <h1 style="margin-top:22px;">${s.icon} ${s.name}</h1>
       <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
       <table>
-        <thead><tr><th>التاريخ</th><th>السند</th><th>الساعة</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>الباركود</th><th>ملاحظات</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="9" style="text-align:center;color:#888;">لا توجد قيود</td></tr>'}</tbody>
+        <thead><tr><th>التاريخ</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>ملاحظات</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#888;">لا توجد قيود</td></tr>'}</tbody>
       </table>`;
   }
 
@@ -1389,13 +1418,10 @@ $('printSectionBtn').addEventListener('click', ()=>{
   const rows = entries.map(e=>`
     <tr>
       <td>${e.date}</td>
-      <td>${e.voucher || '—'}</td>
-      <td>${e.time || '—'}</td>
       <td>${e.type}${e.movement ? ' — ' + e.movement : ''}</td>
       <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
       <td>${e.weight.toFixed(3)}</td>
       <td>${e.qty}</td>
-      <td>${e.barcode || '—'}</td>
       <td>${e.notes || '—'}</td>
     </tr>`).join('');
   const html = `
@@ -1403,7 +1429,7 @@ $('printSectionBtn').addEventListener('click', ()=>{
     <h2>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</h2>
     <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
     <table>
-      <thead><tr><th>التاريخ</th><th>السند</th><th>الساعة</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>الباركود</th><th>ملاحظات</th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>ملاحظات</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
@@ -1417,13 +1443,10 @@ $('printReportBtn').addEventListener('click', ()=>{
   const rows = all.map(e=>`
     <tr>
       <td>${e.sectionName}</td>
-      <td>${e.voucher || '—'}</td>
-      <td>${e.time || '—'}</td>
       <td>${e.type}</td>
       <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
       <td>${e.weight.toFixed(3)}</td>
       <td>${e.qty}</td>
-      <td>${e.barcode || '—'}</td>
       <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
       <td>${e.notes || '—'}</td>
     </tr>`).join('');
@@ -1432,7 +1455,7 @@ $('printReportBtn').addEventListener('click', ()=>{
     <h2>اليوم: ${lastReportDate}</h2>
     <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — إجمالي القيود: ${all.length}</div>
     <table>
-      <thead><tr><th>الخانة</th><th>السند</th><th>الساعة</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>الباركود</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
+      <thead><tr><th>الخانة</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
