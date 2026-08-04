@@ -476,7 +476,7 @@
       <div class="panel" id="addEntryPanel">
         <h4>إضافة قيد جديد</h4>
         <div class="formGrid">
-          <div class="field" style="margin-bottom:0;">
+          <div class="field" style="margin-bottom:0;" id="f_type_wrap">
             <label>الصنف</label>
             <select id="f_type">
               <option value="جنيه">جنيه ذهب</option>
@@ -485,6 +485,10 @@
               <option value="توله">توله</option>
               <option value="أخرى">صنف آخر</option>
             </select>
+          </div>
+          <div class="field" style="margin-bottom:0;display:none;" id="f_bayan_wrap">
+            <label>بيان</label>
+            <input type="text" id="f_bayan" placeholder="اكتب بيان الصنف">
           </div>
           <div class="field" style="margin-bottom:0;" id="f_customWrap" style="display:none;">
             <label>اسم الصنف (لو أخرى)</label>
@@ -514,9 +518,13 @@
             <label>العدد</label>
             <input type="number" step="1" id="f_qty" placeholder="مثال: 1" value="1">
           </div>
-          <div class="field" style="margin-bottom:0;">
+          <div class="field" style="margin-bottom:0;" id="f_karat_wrap">
             <label>العيار</label>
             <input type="text" id="f_karat" placeholder="—" readonly>
+            <select id="f_karat_select" style="display:none;">
+              <option value="21">21 عيار</option>
+              <option value="24">24 عيار</option>
+            </select>
           </div>
           <div class="field" style="margin-bottom:0;display:none;" id="f_movement_wrap">
             <label id="f_movement_label">نوع الحركة</label>
@@ -839,7 +847,7 @@ async function renderManagerOverview(){
           <div class="sumBox"><div class="n">${filteredEntries.length}</div><div class="l">عدد القيود</div></div>
           ${extraSum}
         </div>
-        ${buildBreakdownHtml(s.key, filteredEntries, dayLabelText)}
+        ${s.key === 'jard' ? buildJardBreakdown(filteredEntries) : buildBreakdownHtml(s.key, filteredEntries, dayLabelText)}
       </div>`;
   }
   $('managerOverview').innerHTML = html;
@@ -904,15 +912,18 @@ let editingEntryOriginal = null;
 
 $('addBtn').addEventListener('click', async ()=>{
  try{
+  const isJard = currentSectionKey === 'jard';
   const type = $('f_type').value;
   const isTola = type === 'توله';
   const custom = $('f_custom').value.trim();
+  const bayan = $('f_bayan').value.trim();
   const weight = isTola ? parseFloat($('f_weight_tola').value) : parseFloat($('f_weight').value);
   const qty = parseInt($('f_qty').value) || 1;
-  const karat = karatForType(type);
+  const karat = isJard ? $('f_karat_select').value : karatForType(type);
   const notes = $('f_notes').value.trim();
 
-  if(type === 'أخرى' && !custom){ alert('اكتب اسم الصنف'); return; }
+  if(isJard && !bayan){ alert('اكتب البيان'); return; }
+  if(!isJard && type === 'أخرى' && !custom){ alert('اكتب اسم الصنف'); return; }
   if(isNaN(weight) || weight <= 0){ alert('من فضلك أدخل وزن صحيح'); return; }
 
   const now = new Date();
@@ -927,7 +938,7 @@ $('addBtn').addEventListener('click', async ()=>{
   }
   const entry = {
     id: uid(),
-    type: type === 'أخرى' ? custom : type,
+    type: isJard ? bayan : (type === 'أخرى' ? custom : type),
     karat,
     weight, qty, notes,
     date: chosenDateObj.toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'2-digit', day:'2-digit'}),
@@ -969,7 +980,7 @@ $('addBtn').addEventListener('click', async ()=>{
 
   $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
   $('f_qty').value='1'; $('f_notes').value=''; $('f_custom').value='';
-  $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value='';
+  $('f_dulash').value=''; $('f_gold9999').value=''; $('f_gold875').value=''; $('f_bayan').value='';
   applyTypeSelection();
  }catch(err){
   console.error('addBtn error:', err);
@@ -996,6 +1007,12 @@ async function openSection(key){
   $('f_dulash_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_gold9999_wrap').style.display = key === 'khaam' ? 'block' : 'none';
   $('f_gold875_wrap').style.display = key === 'khaam' ? 'block' : 'none';
+  const isJard = key === 'jard';
+  $('f_type_wrap').style.display = isJard ? 'none' : 'block';
+  $('f_bayan_wrap').style.display = isJard ? 'block' : 'none';
+  $('f_bayan').value = '';
+  $('f_karat').style.display = isJard ? 'none' : 'block';
+  $('f_karat_select').style.display = isJard ? 'block' : 'none';
   $('f_type').selectedIndex = 0;
   applyTypeSelection();
   $('addEntryPanel').style.display = (currentRole === 'manager') ? 'none' : 'block';
@@ -1079,6 +1096,34 @@ function buildBreakdownHtml(sectionKey, entries, dateLabel){
   const byT = byTypeBreakdown(entries);
   return movementBox('', byT, dateLabel);
 }
+function buildJardBreakdown(entries){
+  if(!entries.length){
+    return '<div class="panel"><div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div></div>';
+  }
+  const rows = entries.map(e => `
+    <tr>
+      <td data-label="بيان"><span class="tag">${e.type}</span></td>
+      <td data-label="الوزن">${e.weight.toFixed(3)}</td>
+      <td data-label="العدد">${e.qty}</td>
+      <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
+      <td data-label="ملاحظات">${e.notes || '—'}</td>
+    </tr>`).join('');
+  return `
+    <div class="panel" style="padding:0;overflow-x:auto;">
+      <table>
+        <thead>
+          <tr>
+            <th>بيان</th>
+            <th>الوزن (جم)</th>
+            <th>العدد</th>
+            <th>العيار</th>
+            <th>ملاحظات</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
 function buildKhaamExtraHtml(entries){
   const dulashTotal = entries.reduce((a,e)=>a+(e.dulash||0),0);
   const g9999 = entries.reduce((a,e)=>a+(e.gold9999||0),0);
@@ -1131,14 +1176,19 @@ function renderTable(){
   // summary
   const totalWeight = entries.reduce((a,e)=>a+e.weight*e.qty,0);
   const totalQty = entries.reduce((a,e)=>a+e.qty,0);
+  const countLabel = currentSectionKey === 'jard' ? 'عدد الأصناف' : 'عدد القيود';
   let sumHtml = `
     <div class="sumBox"><div class="n">${totalWeight.toFixed(3)}</div><div class="l">إجمالي الوزن (جم)</div></div>
     <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
-    <div class="sumBox"><div class="n">${entries.length}</div><div class="l">عدد القيود</div></div>
+    <div class="sumBox"><div class="n">${entries.length}</div><div class="l">${countLabel}</div></div>
   `;
 
   const breakdownDateLabel = dateFilterVal ? formatDDMMYYYY(dateFilterVal) : 'كل التواريخ';
-  $('movementBreakdown').innerHTML = buildBreakdownHtml(currentSectionKey, entries, breakdownDateLabel);
+  if(currentSectionKey === 'jard'){
+    $('movementBreakdown').innerHTML = buildJardBreakdown(entries);
+  }else{
+    $('movementBreakdown').innerHTML = buildBreakdownHtml(currentSectionKey, entries, breakdownDateLabel);
+  }
   if(currentSectionKey === 'khaam'){
     sumHtml += buildKhaamExtraHtml(entries);
   }
@@ -1195,14 +1245,19 @@ function startEdit(id){
   editingEntryId = id;
   editingEntryOriginal = entry;
 
-  const knownTypes = ['جنيه','نص جنيه','ربع جنيه','توله','أخرى'];
-  if(knownTypes.includes(entry.type)){
-    $('f_type').value = entry.type;
+  if(currentSectionKey === 'jard'){
+    $('f_bayan').value = entry.type || '';
+    if(entry.karat) $('f_karat_select').value = String(entry.karat);
   }else{
-    $('f_type').value = 'أخرى';
-    $('f_custom').value = entry.type;
+    const knownTypes = ['جنيه','نص جنيه','ربع جنيه','توله','أخرى'];
+    if(knownTypes.includes(entry.type)){
+      $('f_type').value = entry.type;
+    }else{
+      $('f_type').value = 'أخرى';
+      $('f_custom').value = entry.type;
+    }
+    applyTypeSelection();
   }
-  applyTypeSelection();
 
   if(entry.type === 'توله'){
     $('f_weight_tola').value = String(entry.weight);
