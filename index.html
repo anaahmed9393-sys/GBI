@@ -337,6 +337,37 @@
   .karatDetail th, .karatDetail td{padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid rgba(58,47,32,0.4);}
   .karatDetail th{color:var(--muted);font-weight:600;}
 
+  .remTypeDetail{
+    margin-top:6px;
+    background:var(--panel);
+    border:1px solid var(--line);
+    border-radius:8px;
+    overflow:hidden;
+  }
+  .remTypeDetail summary{
+    cursor:pointer;
+    list-style:none;
+    padding:7px 10px;
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-size:12px;
+    color:var(--gold-bright);
+    font-weight:600;
+  }
+  .remTypeDetail summary::-webkit-details-marker{display:none;}
+  .remTypeDetail summary::after{content:"▾";font-size:10px;color:var(--muted);}
+  .remTypeDetail[open] summary::after{content:"▴";}
+  .remTypeDetail[open] summary{border-bottom:1px solid var(--line);}
+  .remTypeDetail .remTypeBody{padding:6px 10px;}
+  .remTypeDetail .remTypeRow{
+    display:flex;justify-content:space-between;align-items:center;
+    padding:5px 0;font-size:12px;color:var(--muted);
+    border-bottom:1px solid rgba(58,47,32,0.35);
+  }
+  .remTypeDetail .remTypeRow:last-child{border-bottom:none;}
+  .remTypeDetail .remTypeRow span:first-child{color:var(--text);}
+
   footer.foot{
     text-align:center;color:var(--muted);font-size:11.5px;padding:18px;border-top:1px solid var(--line);
   }
@@ -890,7 +921,7 @@ async function renderManagerOverview(){
         </div>
         <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">${dayLabelText}</div>
         ${extraSum ? `<div class="summary" style="margin-bottom:12px;">${extraSum}</div>` : ''}
-        ${buildKaratDetails(s.key, filteredEntries, cumulativeEntries)}
+        ${buildKaratDetails(s.key, filteredEntries, cumulativeEntries, dVal)}
         ${s.key === 'jard' ? buildJardBreakdown(filteredEntries) : (MOVEMENT_OPTIONS[s.key] ? '' : buildBreakdownHtml(s.key, filteredEntries, dayLabelText, cumulativeEntries))}
       </div>`;
   }
@@ -1159,7 +1190,7 @@ function fmtWeight(w){
   return s;
 }
 
-function buildKaratDetails(sectionKey, entries, cumulativeEntries){
+function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
   const cumEntries = cumulativeEntries || entries;
   function block(karatVal, label){
     const list = entries.filter(e=>String(e.karat)===karatVal);
@@ -1194,15 +1225,43 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries){
           </div>`;
       }).join('');
 
-      // Net total: normally submitted - received/كسر, cumulative up to the selected date.
-      // For taghlif specifically: مسلم للتغليف - مسلم للباركود (cross-section, per karat).
-      let remQ, remW;
+      // Net total.
+      // For taghlif specifically: مسلم للتغليف - مسلم للباركود, cumulative up to the selected
+      // date (رصيد تراكمي عادي), never negative (clamped to 0).
+      // For other sections (e.g. damgha): submitted - received/كسر, cumulative up to the selected date.
+      let remQ, remW, remByType = null;
       if(sectionKey === 'taghlif'){
         const cumTaghlif = cumEntries.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للتغليف');
         const baraqodAll = sectionCache['baraqod'] || [];
         const cumBaraqod = baraqodAll.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للباركود');
-        remQ = cumTaghlif.reduce((a,e)=>a+e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.qty,0);
-        remW = cumTaghlif.reduce((a,e)=>a+e.weight*e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.weight*e.qty,0);
+        const rawRemQ = cumTaghlif.reduce((a,e)=>a+e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.qty,0);
+        const rawRemW = cumTaghlif.reduce((a,e)=>a+e.weight*e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.weight*e.qty,0);
+        remQ = Math.max(0, rawRemQ);
+        remW = Math.max(0, rawRemW);
+
+        // per-type (صنف) net breakdown: مسلم للتغليف - مسلم للباركود لكل صنف، برضو مش سالب
+        const typeKey = e => e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
+        const taghlifByType = {};
+        cumTaghlif.forEach(e=>{
+          const tk = typeKey(e);
+          if(!taghlifByType[tk]) taghlifByType[tk] = {qty:0, weight:0};
+          taghlifByType[tk].qty += e.qty;
+          taghlifByType[tk].weight += e.weight * e.qty;
+        });
+        const baraqodByType = {};
+        cumBaraqod.forEach(e=>{
+          const tk = typeKey(e);
+          if(!baraqodByType[tk]) baraqodByType[tk] = {qty:0, weight:0};
+          baraqodByType[tk].qty += e.qty;
+          baraqodByType[tk].weight += e.weight * e.qty;
+        });
+        const allTypeKeys = new Set([...Object.keys(taghlifByType), ...Object.keys(baraqodByType)]);
+        remByType = {};
+        allTypeKeys.forEach(tk=>{
+          const tQ = (taghlifByType[tk]||{}).qty || 0, tW = (taghlifByType[tk]||{}).weight || 0;
+          const bQ = (baraqodByType[tk]||{}).qty || 0, bW = (baraqodByType[tk]||{}).weight || 0;
+          remByType[tk] = {qty: Math.max(0, tQ-bQ), weight: Math.max(0, tW-bW)};
+        });
       }else{
         const cumList = cumEntries.filter(e=>String(e.karat)===karatVal);
         const cumRows = opts.map(o=>{
@@ -1212,19 +1271,44 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries){
         remQ = cumRows.length ? cumRows[0].sq : 0;
         remW = cumRows.length ? cumRows[0].sw : 0;
         for(let i=1;i<cumRows.length;i++){ remQ -= cumRows[i].sq; remW -= cumRows[i].sw; }
+
+        // per-type (صنف) net breakdown within this karat, so "الباقي" can be shown split by type too
+        remByType = {};
+        cumList.forEach(e=>{
+          const tk = e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
+          if(!remByType[tk]) remByType[tk] = {qty:0, weight:0};
+          const idx = opts.indexOf(e.movement);
+          const sign = idx === 0 ? 1 : -1;
+          remByType[tk].qty += sign * e.qty;
+          remByType[tk].weight += sign * e.weight * e.qty;
+        });
       }
       q = remQ;
       w = remW;
 
       if(!HIDE_REMAINING.has(sectionKey)){
         const sName = (SECTIONS.find(x=>x.key===sectionKey)||{}).name || '';
-        const remLabel = sectionKey === 'taghlif'
-          ? 'الباقي في التغليف (مسلم للتغليف − مسلم للباركود)'
-          : 'الباقي في ' + sName + ' (رصيد تراكمي)';
+        const remLabel = 'الباقي في ' + sName + ' (رصيد تراكمي)';
+        let remTypeRows = '';
+        if(remByType && Object.keys(remByType).length){
+          const typeRowsHtml = Object.keys(remByType).map(tk => `
+            <div class="remTypeRow">
+              <span>${tk}</span>
+              <span>${remByType[tk].qty} قطعة — ${fmtWeight(remByType[tk].weight)} جم</span>
+            </div>`).join('');
+          remTypeRows = `
+            <details class="remTypeDetail">
+              <summary>اعرف التفاصيل (حسب الصنف)</summary>
+              <div class="remTypeBody">${typeRowsHtml}</div>
+            </details>`;
+        }
         rowsHtml += `
-          <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:12.5px;font-weight:700;">
-            <span>${remLabel}</span>
-            <span>${remQ} قطعة — ${fmtWeight(remW)} جم</span>
+          <div style="padding:7px 0;font-size:12.5px;">
+            <div style="display:flex;justify-content:space-between;font-weight:700;">
+              <span>${remLabel}</span>
+              <span>${remQ} قطعة — ${fmtWeight(remW)} جم</span>
+            </div>
+            ${remTypeRows}
           </div>`;
       }
       const innerSummary = `
@@ -1369,11 +1453,11 @@ function renderTable(){
 
   const breakdownDateLabel = dateFilterVal ? formatDDMMYYYY(dateFilterVal) : 'كل التواريخ';
   if(currentSectionKey === 'jard'){
-    $('movementBreakdown').innerHTML = buildKaratDetails(currentSectionKey, entries, cumulativeEntries) + buildJardBreakdown(entries);
+    $('movementBreakdown').innerHTML = buildKaratDetails(currentSectionKey, entries, cumulativeEntries, dateFilterVal) + buildJardBreakdown(entries);
   }else if(MOVEMENT_OPTIONS[currentSectionKey]){
-    $('movementBreakdown').innerHTML = buildKaratDetails(currentSectionKey, entries, cumulativeEntries);
+    $('movementBreakdown').innerHTML = buildKaratDetails(currentSectionKey, entries, cumulativeEntries, dateFilterVal);
   }else{
-    $('movementBreakdown').innerHTML = buildKaratDetails(currentSectionKey, entries, cumulativeEntries) + buildBreakdownHtml(currentSectionKey, entries, breakdownDateLabel, cumulativeEntries);
+    $('movementBreakdown').innerHTML = buildKaratDetails(currentSectionKey, entries, cumulativeEntries, dateFilterVal) + buildBreakdownHtml(currentSectionKey, entries, breakdownDateLabel, cumulativeEntries);
   }
   if(currentSectionKey === 'khaam'){
     sumHtml += buildKhaamExtraHtml(entries);
@@ -1695,24 +1779,37 @@ $('printReportBtn').addEventListener('click', ()=>{
   const all = lastReportRows;
   const totalWeight = all.reduce((a,e)=>a+e.weight*e.qty, 0);
   const totalQty = all.reduce((a,e)=>a+e.qty, 0);
-  const rows = all.map(e=>`
-    <tr>
-      <td>${e.sectionName}</td>
-      <td>${e.type}</td>
-      <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
-      <td>${e.weight.toFixed(3)}</td>
-      <td>${e.qty}</td>
-      <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
-      <td>${e.notes || '—'}</td>
-    </tr>`).join('');
+  const periodLabel = {day:'اليومي', week:'الأسبوعي', month:'الشهري'}[reportPeriod] || 'اليومي';
+
+  let sectionsHtml = '';
+  SECTIONS.forEach(s=>{
+    const secRows = all.filter(e => e.sectionName === s.name);
+    if(!secRows.length) return;
+    const secWeight = secRows.reduce((a,e)=>a+e.weight*e.qty, 0);
+    const secQty = secRows.reduce((a,e)=>a+e.qty, 0);
+    const rows = secRows.map(e=>`
+      <tr>
+        <td>${e.type}</td>
+        <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
+        <td>${e.weight.toFixed(3)}</td>
+        <td>${e.qty}</td>
+        <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
+        <td>${e.notes || '—'}</td>
+      </tr>`).join('');
+    sectionsHtml += `
+      <h1 style="margin-top:22px;">${s.icon} ${s.name}</h1>
+      <div class="meta">إجمالي الوزن: ${secWeight.toFixed(3)} جم — إجمالي العدد: ${secQty} — عدد القيود: ${secRows.length}</div>
+      <table>
+        <thead><tr><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+  });
+
   const html = `
-    <h1>📊 التقرير اليومي — GBI</h1>
-    <h2>اليوم: ${lastReportDate}</h2>
-    <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — إجمالي القيود: ${all.length}</div>
-    <table>
-      <thead><tr><th>الخانة</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table>
+    <h1>📊 التقرير ${periodLabel} — GBI</h1>
+    <h2>${lastReportDate}</h2>
+    <div class="meta">إجمالي الوزن الكلي: ${totalWeight.toFixed(3)} جم — إجمالي العدد الكلي: ${totalQty} — إجمالي القيود: ${all.length}</div>
+    ${sectionsHtml || '<div class="meta" style="text-align:center;margin-top:20px;">لا توجد قيود في هذه الفترة</div>'}
   `;
   printFromArea(html);
 });
