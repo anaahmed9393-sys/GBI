@@ -389,8 +389,8 @@
   body.role-manager #sectionTable td:nth-child(1),
   body.role-manager #sectionTable th:nth-child(2),
   body.role-manager #sectionTable td:nth-child(2),
-  body.role-manager #sectionTable th:nth-child(6),
-  body.role-manager #sectionTable td:nth-child(6){
+  body.role-manager #sectionTable th:nth-child(7),
+  body.role-manager #sectionTable td:nth-child(7){
     display:none;
   }
 
@@ -642,6 +642,7 @@
               <th>العيار</th>
               <th>الوزن (جم)</th>
               <th>العدد</th>
+              <th>بواسطة</th>
               <th>ملاحظات</th>
               <th></th>
             </tr>
@@ -1328,14 +1329,17 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
         let remTypeRows = '';
         if(remByType && Object.keys(remByType).length){
           const typeRowsHtml = Object.keys(remByType).map(tk => `
-            <div class="remTypeRow">
-              <span>${tk}</span>
-              <span>${remByType[tk].qty} قطعة — ${fmtWeight(remByType[tk].weight)} جم</span>
-            </div>`).join('');
+            <tr>
+              <td><span class="tag">${tk}</span></td>
+              <td>${fmtWeight(remByType[tk].weight)}</td>
+              <td>${remByType[tk].qty}</td>
+            </tr>`).join('');
           remTypeRows = `
             <details class="remTypeDetail">
               <summary>اعرف التفاصيل (حسب الصنف)</summary>
-              <div class="remTypeBody">${typeRowsHtml}</div>
+              <div class="remTypeBody">
+                <table><thead><tr><th>الصنف</th><th>الوزن (جم)</th><th>العدد</th></tr></thead><tbody>${typeRowsHtml}</tbody></table>
+              </div>
             </details>`;
         }
         rowsHtml += `
@@ -1519,6 +1523,7 @@ function renderTable(){
       <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
       <td data-label="الوزن">${e.weight.toFixed(3)}</td>
       <td data-label="العدد">${e.qtyNA ? 'لا يوجد' : e.qty}</td>
+      <td data-label="بواسطة">${ROLE_LABELS[e.by] || e.by || '—'}</td>
       <td data-label="ملاحظات">${(e.notes || '—')}${extraNotes}</td>
       <td data-label="">
         ${currentRole === 'manager' ? '' : `<div class="rowActions"><button class="edit" data-id="${e.id}">تعديل</button><button class="del" data-id="${e.id}">حذف</button></div>`}
@@ -1782,6 +1787,7 @@ $('printAllBtn').addEventListener('click', async ()=>{
         <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
         <td>${e.weight.toFixed(3)}</td>
         <td>${e.qty}</td>
+        <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
         <td>${e.notes || '—'}</td>
       </tr>`).join('');
 
@@ -1789,8 +1795,8 @@ $('printAllBtn').addEventListener('click', async ()=>{
       <h1 style="margin-top:22px;">${s.icon} ${s.name}</h1>
       <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
       <table>
-        <thead><tr><th>التاريخ</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>ملاحظات</th></tr></thead>
-        <tbody>${rows || '<tr><td colspan="6" style="text-align:center;color:#888;">لا توجد قيود</td></tr>'}</tbody>
+        <thead><tr><th>التاريخ</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:#888;">لا توجد قيود</td></tr>'}</tbody>
       </table>`;
   }
 
@@ -1815,6 +1821,7 @@ $('printSectionBtn').addEventListener('click', ()=>{
       <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
       <td>${e.weight.toFixed(3)}</td>
       <td>${e.qty}</td>
+      <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
       <td>${e.notes || '—'}</td>
     </tr>`).join('');
   const html = `
@@ -1822,7 +1829,7 @@ $('printSectionBtn').addEventListener('click', ()=>{
     <h2>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</h2>
     <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
     <table>
-      <thead><tr><th>التاريخ</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>ملاحظات</th></tr></thead>
+      <thead><tr><th>التاريخ</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
