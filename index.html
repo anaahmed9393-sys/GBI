@@ -1313,6 +1313,11 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
           remByType[tk].qty += sign * e.qty;
           remByType[tk].weight += sign * e.weight * e.qty;
         });
+        // مفيش أرقام سالبة في تفصيل الأصناف — الصنف اللي مالوش رصيد فعلي متبقي مايتعرضش
+        Object.keys(remByType).forEach(tk=>{
+          remByType[tk].qty = Math.max(0, remByType[tk].qty);
+          remByType[tk].weight = Math.max(0, remByType[tk].weight);
+        });
       }
       // فقط الأقسام اللي بتعرض "الباقي" فعليًا تستبدل العدد/الوزن المعروضين بالصافي.
       // الباركود (HIDE_REMAINING) بيفضل يعرض أرقامه الحقيقية لليوم/الفترة المختارة، مش صافي تراكمي.
@@ -1327,7 +1332,7 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
           ? 'الباقي في التغليف'
           : 'الباقي في ' + sName + ' (رصيد تراكمي)';
         let remTypeRows = '';
-        const remTypeKeys = remByType ? Object.keys(remByType).filter(tk => remByType[tk].qty !== 0 || remByType[tk].weight !== 0) : [];
+        const remTypeKeys = remByType ? Object.keys(remByType).filter(tk => remByType[tk].qty > 0 || remByType[tk].weight > 0.0005) : [];
         if(remTypeKeys.length){
           const typeRowsHtml = remTypeKeys.map(tk => `
             <tr>
