@@ -1213,7 +1213,12 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
             <td>${e.qtyNA ? 'لا يوجد' : e.qty}</td>
           </tr>`).join('');
         const itemTable = sub.length
-          ? `<table style="margin-top:6px;"><thead><tr><th>الصنف</th><th>الوزن (جم)</th><th>العدد</th></tr></thead><tbody>${itemRows}</tbody></table>`
+          ? `<details class="remTypeDetail">
+               <summary>اعرف التفاصيل (حسب الصنف)</summary>
+               <div class="remTypeBody">
+                 <table><thead><tr><th>الصنف</th><th>الوزن (جم)</th><th>العدد</th></tr></thead><tbody>${itemRows}</tbody></table>
+               </div>
+             </details>`
           : '';
         return `
           <div style="padding:7px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:12.5px;">
@@ -1233,7 +1238,9 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
       if(sectionKey === 'taghlif'){
         const cumTaghlif = cumEntries.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للتغليف');
         const baraqodAll = sectionCache['baraqod'] || [];
-        const cumBaraqod = baraqodAll.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للباركود');
+        // الباركود يوم بيومه (مش تراكمي) — يقارن بس بقيود نفس اليوم المختار
+        const baraqodForCompare = dayISO ? baraqodAll.filter(e=>e.dateISO===dayISO) : baraqodAll;
+        const cumBaraqod = baraqodForCompare.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للباركود');
         const rawRemQ = cumTaghlif.reduce((a,e)=>a+e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.qty,0);
         const rawRemW = cumTaghlif.reduce((a,e)=>a+e.weight*e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.weight*e.qty,0);
         remQ = Math.max(0, rawRemQ);
