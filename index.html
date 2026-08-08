@@ -1327,8 +1327,9 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
           ? 'الباقي في التغليف'
           : 'الباقي في ' + sName + ' (رصيد تراكمي)';
         let remTypeRows = '';
-        if(remByType && Object.keys(remByType).length){
-          const typeRowsHtml = Object.keys(remByType).map(tk => `
+        const remTypeKeys = remByType ? Object.keys(remByType).filter(tk => remByType[tk].qty !== 0 || remByType[tk].weight !== 0) : [];
+        if(remTypeKeys.length){
+          const typeRowsHtml = remTypeKeys.map(tk => `
             <tr>
               <td><span class="tag">${tk}</span></td>
               <td>${fmtWeight(remByType[tk].weight)}</td>
