@@ -192,12 +192,12 @@
 
   /* summary strip */
   .summary{
-    display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
-    gap:12px;margin-bottom:20px;
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));
+    gap:10px;margin-bottom:20px;
   }
   .sumBox{
     background:var(--panel-2);border:1px solid var(--line);border-radius:10px;
-    padding:14px 16px;
+    padding:12px 10px;
   }
   .sumBox .n{font-family:'Cairo',sans-serif;font-weight:800;font-size:20px;color:var(--gold-bright);}
   .sumBox .l{font-size:12px;color:var(--muted);margin-top:2px;}
@@ -304,16 +304,34 @@
   .karatDetail summary{
     cursor:pointer;
     list-style:none;
-    padding:11px 14px;
+    padding:11px 10px;
     display:flex;
+    flex-wrap:nowrap;
     justify-content:space-between;
     align-items:center;
+    gap:8px;
     font-size:13.5px;
   }
   .karatDetail summary::-webkit-details-marker{display:none;}
-  .karatDetail summary .kdLabel{color:var(--gold-bright);font-weight:700;}
+  .karatDetail summary .kdLabel{color:var(--gold-bright);font-weight:700;flex-shrink:0;}
   .karatDetail summary .kdStat{color:var(--text);font-size:13px;}
   .karatDetail[open] summary{border-bottom:1px solid var(--line);}
+  .kdInnerSummary{
+    display:flex;
+    gap:8px;
+    margin-bottom:12px;
+  }
+  .kdSumBox{
+    flex:1 1 0;
+    min-width:0;
+    background:var(--panel-2);
+    border:1px solid var(--line);
+    border-radius:8px;
+    padding:9px 6px;
+    text-align:center;
+  }
+  .kdSumBox .n{font-family:'Cairo',sans-serif;font-weight:800;font-size:15px;color:var(--gold-bright);word-break:break-word;}
+  .kdSumBox .l{font-size:10.5px;color:var(--muted);margin-top:3px;}
   .karatDetail .karatDetailBody{padding:10px 14px;}
   .karatDetail table{width:100%;border-collapse:collapse;}
   .karatDetail th, .karatDetail td{padding:6px 8px;font-size:12px;text-align:right;border-bottom:1px solid rgba(58,47,32,0.4);}
@@ -376,7 +394,7 @@
       <select id="userInput">
         <option value="admin">أدمن</option>
         <option value="manager">مدير</option>
-        <option value="operator">مشغل</option>
+        <option value="operator">أدمن 1</option>
       </select>
     </div>
     <div class="field">
@@ -412,7 +430,7 @@
       <div class="grid" id="dashGrid"></div>
 
       <div class="pageTitle" id="dashTitleManager" style="display:none;">
-        <h2 class="display">📋 شاشة العرض — كل الخانات</h2>
+        <h2 class="display">📋 شاشة العرض</h2>
       </div>
       <div id="managerOverview" style="display:none;"></div>
 
@@ -488,7 +506,7 @@
             <button class="iconbtn dateNavBtn" id="sectionDatePrevBtn">◀</button>
             <input type="date" id="dateFilterInput" title="اختيار تاريخ هنا يسجّل أي قيد جديد بنفس التاريخ ده">
             <button class="iconbtn dateNavBtn" id="sectionDateNextBtn">▶</button>
-            <button class="iconbtn dateNavBtn" id="sectionDateTodayBtn">النهاردة</button>
+            <button class="iconbtn dateNavBtn" id="sectionDateTodayBtn">كل التواريخ</button>
           </div>
           <button class="iconbtn" id="printSectionBtn">🖨️ طباعة</button>
         </div>
@@ -645,7 +663,7 @@ const MOVEMENT_OPTIONS = {
 };
 const HIDE_REMAINING = new Set(['baraqod']);
 const AUTH_KEY = 'gbi_auth_v1';
-const ROLE_LABELS = {admin:'أدمن', manager:'مدير', operator:'مشغل'};
+const ROLE_LABELS = {admin:'أدمن', manager:'مدير', operator:'أدمن 1'};
 let currentUser = null;
 let currentRole = null;
 let currentSectionKey = null;
@@ -871,12 +889,7 @@ async function renderManagerOverview(){
           </div>
         </div>
         <div style="color:var(--muted);font-size:12.5px;margin-bottom:10px;">${dayLabelText}</div>
-        <div class="summary" style="margin-bottom:12px;">
-          <div class="sumBox"><div class="n">${totalWeight.toFixed(3)}</div><div class="l">إجمالي الوزن (جم)</div></div>
-          <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
-          <div class="sumBox"><div class="n">${filteredEntries.length}</div><div class="l">${countLabel}</div></div>
-          ${extraSum}
-        </div>
+        ${extraSum ? `<div class="summary" style="margin-bottom:12px;">${extraSum}</div>` : ''}
         ${buildKaratDetails(s.key, filteredEntries, cumulativeEntries)}
         ${s.key === 'jard' ? buildJardBreakdown(filteredEntries) : (MOVEMENT_OPTIONS[s.key] ? '' : buildBreakdownHtml(s.key, filteredEntries, dayLabelText, cumulativeEntries))}
       </div>`;
@@ -1138,62 +1151,126 @@ function buildBreakdownHtml(sectionKey, entries, dateLabel, cumulativeEntries){
   const byT = byTypeBreakdown(entries);
   return movementBox('', byT, dateLabel);
 }
+function fmtWeight(w){
+  let s = Number(w).toFixed(3);
+  if(s.indexOf('.') !== -1){
+    s = s.replace(/0+$/, '').replace(/\.$/, '');
+  }
+  return s;
+}
+
 function buildKaratDetails(sectionKey, entries, cumulativeEntries){
   const cumEntries = cumulativeEntries || entries;
   function block(karatVal, label){
     const list = entries.filter(e=>String(e.karat)===karatVal);
-    const w = list.reduce((a,e)=>a+e.weight*e.qty,0);
-    const q = list.reduce((a,e)=>a+e.qty,0);
+    const rawW = list.reduce((a,e)=>a+e.weight*e.qty,0);
+    const rawQ = list.reduce((a,e)=>a+e.qty,0);
 
+    let w = rawW, q = rawQ;
     let body;
+
     if(MOVEMENT_OPTIONS[sectionKey]){
       const opts = MOVEMENT_OPTIONS[sectionKey];
       let rowsHtml = opts.map(o=>{
         const sub = list.filter(e=>e.movement===o);
         const sq = sub.reduce((a,e)=>a+e.qty,0);
         const sw = sub.reduce((a,e)=>a+e.weight*e.qty,0);
+        const itemRows = sub.map(e=>`
+          <tr>
+            <td><span class="tag">${e.type}</span></td>
+            <td>${fmtWeight(e.weight)}</td>
+            <td>${e.qtyNA ? 'لا يوجد' : e.qty}</td>
+          </tr>`).join('');
+        const itemTable = sub.length
+          ? `<table style="margin-top:6px;"><thead><tr><th>الصنف</th><th>الوزن (جم)</th><th>العدد</th></tr></thead><tbody>${itemRows}</tbody></table>`
+          : '';
         return `
-          <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:12.5px;">
-            <span style="color:var(--gold-bright);">${o}</span>
-            <span>${sq} قطعة — ${sw.toFixed(3)} جم</span>
+          <div style="padding:7px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:12.5px;">
+            <div style="display:flex;justify-content:space-between;">
+              <span style="color:var(--gold-bright);">${o}</span>
+              <span>${sq} قطعة — ${fmtWeight(sw)} جم</span>
+            </div>
+            ${itemTable}
           </div>`;
       }).join('');
 
-      if(!HIDE_REMAINING.has(sectionKey)){
+      // Net total: normally submitted - received/كسر, cumulative up to the selected date.
+      // For taghlif specifically: مسلم للتغليف - مسلم للباركود (cross-section, per karat).
+      let remQ, remW;
+      if(sectionKey === 'taghlif'){
+        const cumTaghlif = cumEntries.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للتغليف');
+        const baraqodAll = sectionCache['baraqod'] || [];
+        const cumBaraqod = baraqodAll.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للباركود');
+        remQ = cumTaghlif.reduce((a,e)=>a+e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.qty,0);
+        remW = cumTaghlif.reduce((a,e)=>a+e.weight*e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.weight*e.qty,0);
+      }else{
         const cumList = cumEntries.filter(e=>String(e.karat)===karatVal);
         const cumRows = opts.map(o=>{
           const sub = cumList.filter(e=>e.movement===o);
           return {sq: sub.reduce((a,e)=>a+e.qty,0), sw: sub.reduce((a,e)=>a+e.weight*e.qty,0)};
         });
-        let remQ = cumRows.length ? cumRows[0].sq : 0;
-        let remW = cumRows.length ? cumRows[0].sw : 0;
+        remQ = cumRows.length ? cumRows[0].sq : 0;
+        remW = cumRows.length ? cumRows[0].sw : 0;
         for(let i=1;i<cumRows.length;i++){ remQ -= cumRows[i].sq; remW -= cumRows[i].sw; }
+      }
+      q = remQ;
+      w = remW;
+
+      if(!HIDE_REMAINING.has(sectionKey)){
         const sName = (SECTIONS.find(x=>x.key===sectionKey)||{}).name || '';
+        const remLabel = sectionKey === 'taghlif'
+          ? 'الباقي في التغليف (مسلم للتغليف − مسلم للباركود)'
+          : 'الباقي في ' + sName + ' (رصيد تراكمي)';
         rowsHtml += `
           <div style="display:flex;justify-content:space-between;padding:7px 0;font-size:12.5px;font-weight:700;">
-            <span>الباقي في ${sName} (رصيد تراكمي)</span>
-            <span>${remQ} قطعة — ${remW.toFixed(3)} جم</span>
+            <span>${remLabel}</span>
+            <span>${remQ} قطعة — ${fmtWeight(remW)} جم</span>
           </div>`;
       }
-      body = rowsHtml;
+      const innerSummary = `
+        <div class="kdInnerSummary">
+          <div class="kdSumBox"><div class="n">${fmtWeight(w)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+          <div class="kdSumBox"><div class="n">${q}</div><div class="l">إجمالي العدد</div></div>
+          <div class="kdSumBox"><div class="n">${list.length}</div><div class="l">عدد الأصناف</div></div>
+        </div>`;
+      body = innerSummary + rowsHtml;
     }else{
+      const innerSummary = `
+        <div class="kdInnerSummary">
+          <div class="kdSumBox"><div class="n">${fmtWeight(w)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+          <div class="kdSumBox"><div class="n">${q}</div><div class="l">إجمالي العدد</div></div>
+          <div class="kdSumBox"><div class="n">${list.length}</div><div class="l">عدد الأصناف</div></div>
+        </div>`;
       const rows = list.map(e=>`
         <tr>
           <td><span class="tag">${e.type}</span></td>
-          <td>${e.weight.toFixed(3)}</td>
+          <td>${fmtWeight(e.weight)}</td>
           <td>${e.qtyNA ? 'لا يوجد' : e.qty}</td>
           <td>${e.notes || '—'}</td>
         </tr>`).join('');
-      body = list.length
+      body = innerSummary + (list.length
         ? `<table><thead><tr><th>الصنف</th><th>الوزن (جم)</th><th>العدد</th><th>ملاحظات</th></tr></thead><tbody>${rows}</tbody></table>`
-        : '<div style="color:var(--muted);font-size:12px;">لا يوجد</div>';
+        : '<div style="color:var(--muted);font-size:12px;">لا يوجد</div>');
     }
 
     return `
       <details class="karatDetail">
         <summary>
           <span class="kdLabel">${label}</span>
-          <span class="kdStat">${q} قطعة — ${w.toFixed(3)} جم</span>
+          <div style="display:flex;gap:10px;flex-shrink:0;">
+            <div style="text-align:center;min-width:32px;">
+              <div style="font-size:10px;color:var(--muted);white-space:nowrap;">الصنف</div>
+              <div style="font-weight:700;font-size:13px;">${list.length}</div>
+            </div>
+            <div style="text-align:center;min-width:32px;">
+              <div style="font-size:10px;color:var(--muted);white-space:nowrap;">العدد</div>
+              <div style="font-weight:700;font-size:13px;">${q}</div>
+            </div>
+            <div style="text-align:center;min-width:40px;">
+              <div style="font-size:10px;color:var(--muted);white-space:nowrap;">الوزن (جم)</div>
+              <div style="font-weight:700;font-size:13px;">${fmtWeight(w)}</div>
+            </div>
+          </div>
         </summary>
         <div class="karatDetailBody">${body}</div>
       </details>`;
@@ -1202,26 +1279,37 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries){
 }
 
 function buildJardBreakdown(entries){
+  const w21 = entries.filter(e=>String(e.karat)==='21').reduce((a,e)=>a+e.weight*e.qty,0);
+  const w24actual = entries.filter(e=>String(e.karat)==='24').reduce((a,e)=>a+e.weight*e.qty,0);
+  const w21ConvertedTo24 = w21 * (21/24);
+  const fineTotal = w24actual + w21ConvertedTo24;
+  const conversionHtml = `
+    <div class="summary" style="margin-bottom:12px;">
+      <div class="sumBox"><div class="n">${fmtWeight(w21)}</div><div class="l">إجمالي وزن عيار 21 (الوزن الفعلي)</div></div>
+      <div class="sumBox"><div class="n">${fmtWeight(fineTotal)}</div><div class="l">إجمالي الوزن بمكافئ عيار 24</div></div>
+    </div>`;
+
   if(!entries.length){
-    return '<div class="panel"><div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div></div>';
+    return `<div class="panel">${conversionHtml}<div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div></div>`;
   }
   const rows = entries.map(e => `
     <tr>
-      <td data-label="بيان"><span class="tag">${e.type}</span></td>
-      <td data-label="الوزن">${e.weight.toFixed(3)}</td>
-      <td data-label="العدد">${e.qtyNA ? 'لا يوجد' : e.qty}</td>
+      <td data-label="الوزن">${fmtWeight(e.weight)}</td>
       <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
+      <td data-label="العدد">${e.qtyNA ? 'لا يوجد' : e.qty}</td>
+      <td data-label="الصنف"><span class="tag">${e.type}</span></td>
       <td data-label="ملاحظات">${e.notes || '—'}</td>
     </tr>`).join('');
   return `
-    <div class="panel" style="padding:0;overflow-x:auto;">
+    <div class="panel" style="padding:14px 0 0;overflow-x:auto;">
+      <div style="padding:0 14px;">${conversionHtml}</div>
       <table>
         <thead>
           <tr>
-            <th>بيان</th>
             <th>الوزن (جم)</th>
-            <th>العدد</th>
             <th>العيار</th>
+            <th>العدد</th>
+            <th>الصنف</th>
             <th>ملاحظات</th>
           </tr>
         </thead>
@@ -1251,7 +1339,7 @@ function formatDDMMYYYY(dateISO){
 
 function sectionDateNav(dir){
   if(dir === 'clear'){
-    $('dateFilterInput').value = new Date().toISOString().slice(0,10);
+    $('dateFilterInput').value = '';
   }else{
     const cur = $('dateFilterInput').value || new Date().toISOString().slice(0,10);
     const d = new Date(cur + 'T00:00:00');
@@ -1277,14 +1365,7 @@ function renderTable(){
   const filtered = entries;
 
   // summary
-  const totalWeight = entries.reduce((a,e)=>a+e.weight*e.qty,0);
-  const totalQty = entries.reduce((a,e)=>a+e.qty,0);
-  const countLabel = 'عدد الأصناف';
-  let sumHtml = `
-    <div class="sumBox"><div class="n">${totalWeight.toFixed(3)}</div><div class="l">إجمالي الوزن (جم)</div></div>
-    <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
-    <div class="sumBox"><div class="n">${entries.length}</div><div class="l">${countLabel}</div></div>
-  `;
+  let sumHtml = '';
 
   const breakdownDateLabel = dateFilterVal ? formatDDMMYYYY(dateFilterVal) : 'كل التواريخ';
   if(currentSectionKey === 'jard'){
@@ -1489,10 +1570,14 @@ async function renderReport(){
 
   const totalWeight = all.reduce((a,e)=>a + e.weight*e.qty, 0);
   const totalQty = all.reduce((a,e)=>a + e.qty, 0);
+  const w21Grand = all.filter(e=>String(e.karat)==='21').reduce((a,e)=>a+e.weight*e.qty,0);
+  const w24Grand = all.filter(e=>String(e.karat)==='24').reduce((a,e)=>a+e.weight*e.qty,0);
   $('reportSummary').innerHTML = `
     <div class="sumBox"><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
     <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
-    <div class="sumBox"><div class="n">${totalWeight.toFixed(3)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+    <div class="sumBox"><div class="n">${fmtWeight(totalWeight)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+    <div class="sumBox"><div class="n">${fmtWeight(w21Grand)}</div><div class="l">إجمالي وزن عيار 21 (جم)</div></div>
+    <div class="sumBox"><div class="n">${fmtWeight(w24Grand)}</div><div class="l">إجمالي وزن عيار 24 (جم)</div></div>
   `;
 
   let secHtml = '<h4>تفصيل حسب الخانة</h4><div class="summary">';
@@ -1500,7 +1585,9 @@ async function renderReport(){
     const secEntries = all.filter(e => e.sectionName === s.name);
     const w = secEntries.reduce((a,e)=>a + e.weight*e.qty, 0);
     const q = secEntries.reduce((a,e)=>a + e.qty, 0);
-    secHtml += `<div class="sumBox"><div class="n">${secEntries.length}</div><div class="l">${s.icon} ${s.name} — ${q} قطعة / ${w.toFixed(3)} جم</div></div>`;
+    const sw21 = secEntries.filter(e=>String(e.karat)==='21').reduce((a,e)=>a+e.weight*e.qty,0);
+    const sw24 = secEntries.filter(e=>String(e.karat)==='24').reduce((a,e)=>a+e.weight*e.qty,0);
+    secHtml += `<div class="sumBox"><div class="n">${secEntries.length}</div><div class="l">${s.icon} ${s.name} — ${q} قطعة / ${fmtWeight(w)} جم<br>عيار21: ${fmtWeight(sw21)} جم — عيار24: ${fmtWeight(sw24)} جم</div></div>`;
   });
   secHtml += '</div>';
   $('reportBySection').innerHTML = secHtml;
