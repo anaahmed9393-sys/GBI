@@ -1260,37 +1260,37 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
       // For other sections (e.g. damgha): submitted - received/كسر, cumulative up to the selected date.
       let remQ, remW, remByType = null;
       if(sectionKey === 'taghlif'){
-        const dayTaghlif = list.filter(e=>e.movement==='مسلم للتغليف');
+        const cumTaghlif = cumEntries.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للتغليف');
         const baraqodAll = sectionCache['baraqod'] || [];
-        const baraqodForCompare = dayISO ? baraqodAll.filter(e=>e.dateISO===dayISO) : baraqodAll;
-        const dayBaraqod = baraqodForCompare.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للباركود');
-        const rawRemQ = dayBaraqod.reduce((a,e)=>a+e.qty,0) - dayTaghlif.reduce((a,e)=>a+e.qty,0);
-        const rawRemW = dayBaraqod.reduce((a,e)=>a+e.weight*e.qty,0) - dayTaghlif.reduce((a,e)=>a+e.weight*e.qty,0);
+        const baraqodForCompare = dayISO ? baraqodAll.filter(e=>e.dateISO<=dayISO) : baraqodAll;
+        const cumBaraqod = baraqodForCompare.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للباركود');
+        const rawRemQ = cumTaghlif.reduce((a,e)=>a+e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.qty,0);
+        const rawRemW = cumTaghlif.reduce((a,e)=>a+e.weight*e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.weight*e.qty,0);
         remQ = Math.max(0, rawRemQ);
         remW = Math.max(0, rawRemW);
 
-        // per-type (صنف) breakdown: مسلم للباركود - مسلم للتغليف لكل صنف، برضو مش سالب
+        // per-type (صنف) breakdown: مسلم للتغليف - مسلم للباركود لكل صنف (رصيد تراكمي)، برضو مش سالب
         const typeKey = e => e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
-        const baraqodByType = {};
-        dayBaraqod.forEach(e=>{
-          const tk = typeKey(e);
-          if(!baraqodByType[tk]) baraqodByType[tk] = {qty:0, weight:0};
-          baraqodByType[tk].qty += e.qty;
-          baraqodByType[tk].weight += e.weight * e.qty;
-        });
         const taghlifByType = {};
-        dayTaghlif.forEach(e=>{
+        cumTaghlif.forEach(e=>{
           const tk = typeKey(e);
           if(!taghlifByType[tk]) taghlifByType[tk] = {qty:0, weight:0};
           taghlifByType[tk].qty += e.qty;
           taghlifByType[tk].weight += e.weight * e.qty;
         });
+        const baraqodByType = {};
+        cumBaraqod.forEach(e=>{
+          const tk = typeKey(e);
+          if(!baraqodByType[tk]) baraqodByType[tk] = {qty:0, weight:0};
+          baraqodByType[tk].qty += e.qty;
+          baraqodByType[tk].weight += e.weight * e.qty;
+        });
         const allTypeKeys = new Set([...Object.keys(baraqodByType), ...Object.keys(taghlifByType)]);
         remByType = {};
         allTypeKeys.forEach(tk=>{
-          const bQ = (baraqodByType[tk]||{}).qty || 0, bW = (baraqodByType[tk]||{}).weight || 0;
           const tQ = (taghlifByType[tk]||{}).qty || 0, tW = (taghlifByType[tk]||{}).weight || 0;
-          remByType[tk] = {qty: Math.max(0, bQ-tQ), weight: Math.max(0, bW-tW)};
+          const bQ = (baraqodByType[tk]||{}).qty || 0, bW = (baraqodByType[tk]||{}).weight || 0;
+          remByType[tk] = {qty: Math.max(0, tQ-bQ), weight: Math.max(0, tW-bW)};
         });
       }else{
         const cumList = cumEntries.filter(e=>String(e.karat)===karatVal);
