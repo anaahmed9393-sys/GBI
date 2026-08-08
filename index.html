@@ -880,8 +880,13 @@ async function renderDashboard(){
   results.forEach(({s, entries})=>{
     const card = document.createElement('div');
     card.className = 'cardTile';
+    let displayCount = entries.length;
+    if(s.key === 'baraqod'){
+      const todayISO = new Date().toISOString().slice(0,10);
+      displayCount = entries.filter(e => e.dateISO === todayISO).length;
+    }
     card.innerHTML = `
-      <span class="count">${entries.length} قيد</span>
+      <span class="count">${displayCount} قيد</span>
       <span class="ico">${s.icon}</span>
       <h3 class="display">${s.name}</h3>
       <p>${s.desc}</p>
