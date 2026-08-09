@@ -535,6 +535,14 @@
       <div class="summary reportSummary" id="reportSummary"></div>
       <div class="panel" id="reportBySection"></div>
 
+      <div class="panel" id="reportAnalysisPanel" style="margin-top:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;margin-bottom:12px;">
+          <h4 style="margin:0;">📈 تحليل التقرير</h4>
+          <button class="iconbtn" id="printAnalysisBtn">🖨️ طباعة التحليل</button>
+        </div>
+        <div id="reportAnalysis"></div>
+      </div>
+
       <div class="panel" style="padding:0;overflow-x:auto;">
         <table>
           <thead>
@@ -898,6 +906,28 @@ async function persistSection(key){
 
 /* ================= DASHBOARD ================= */
 let dashboardRendering = false;
+function buildDashCards(){
+  const grid = $('dashGrid');
+  grid.innerHTML = '';
+  SECTIONS.forEach(s=>{
+    const entries = sectionCache[s.key] || [];
+    const card = document.createElement('div');
+    card.className = 'cardTile';
+    let displayCount = entries.length;
+    if(s.key === 'baraqod'){
+      const todayISO = toLocalISODate(new Date());
+      displayCount = entries.filter(e => e.dateISO === todayISO).length;
+    }
+    card.innerHTML = `
+      <span class="count">${displayCount} قيد</span>
+      <span class="ico">${s.icon}</span>
+      <h3 class="display">${s.name}</h3>
+      <p>${s.desc}</p>
+    `;
+    card.addEventListener('click', ()=>openSection(s.key));
+    grid.appendChild(card);
+  });
+}
 async function renderDashboard(){
   if(dashboardRendering) return; // guard against overlapping calls duplicating the tiles
   dashboardRendering = true;
@@ -920,32 +950,15 @@ async function renderDashboard(){
   $('dashTitleManager').style.display = 'none';
   $('managerOverview').style.display = 'none';
 
-  const grid = $('dashGrid');
-  grid.innerHTML = '';
-
-  const results = await Promise.all(SECTIONS.map(async s=>{
-    let entries = [];
-    try{ entries = await loadSection(s.key); }catch(e){ console.warn('tile load fail', s.key, e); }
-    return {s, entries: entries || []};
+  // Instant navigation: paint immediately from whatever is already cached,
+  // then quietly refresh from storage in the background.
+  buildDashCards();
+  await Promise.all(SECTIONS.map(async s=>{
+    try{ await loadSection(s.key); }catch(e){ console.warn('tile load fail', s.key, e); }
   }));
-
-  results.forEach(({s, entries})=>{
-    const card = document.createElement('div');
-    card.className = 'cardTile';
-    let displayCount = entries.length;
-    if(s.key === 'baraqod'){
-      const todayISO = new Date().toISOString().slice(0,10);
-      displayCount = entries.filter(e => e.dateISO === todayISO).length;
-    }
-    card.innerHTML = `
-      <span class="count">${displayCount} قيد</span>
-      <span class="ico">${s.icon}</span>
-      <h3 class="display">${s.name}</h3>
-      <p>${s.desc}</p>
-    `;
-    card.addEventListener('click', ()=>openSection(s.key));
-    grid.appendChild(card);
-  });
+  if(currentRole !== 'manager' && $('dashboardView').style.display === 'block'){
+    buildDashCards();
+  }
   } finally {
     dashboardRendering = false;
   }
@@ -953,15 +966,13 @@ async function renderDashboard(){
 
 let managerDates = {}; // sectionKey -> dateISO ('' means show everything)
 
-async function renderManagerOverview(){
+function buildManagerOverviewHtml(){
   let html = '';
-  for(const s of SECTIONS){
-    let entries = [];
-    try{ entries = await loadSection(s.key); }catch(e){ console.warn('overview load fail', s.key, e); }
-    entries = entries || [];
+  SECTIONS.forEach(s=>{
+    const entries = sectionCache[s.key] || [];
 
     if(managerDates[s.key] === undefined){
-      managerDates[s.key] = new Date().toISOString().slice(0,10);
+      managerDates[s.key] = toLocalISODate(new Date());
     }
     const dVal = managerDates[s.key];
     const filteredEntries = dVal ? entries.filter(e => e.dateISO === dVal) : entries;
@@ -989,18 +1000,29 @@ async function renderManagerOverview(){
         ${buildKaratDetails(s.key, filteredEntries, cumulativeEntries, dVal)}
         ${s.key === 'jard' ? buildJardBreakdown(filteredEntries) : (MOVEMENT_OPTIONS[s.key] ? '' : buildBreakdownHtml(s.key, filteredEntries, dayLabelText, cumulativeEntries))}
       </div>`;
-  }
+  });
   $('managerOverview').innerHTML = html;
+}
+async function renderManagerOverview(){
+  // Instant navigation: paint immediately from whatever is already cached,
+  // then quietly refresh from storage in the background.
+  buildManagerOverviewHtml();
+  await Promise.all(SECTIONS.map(async s=>{
+    try{ await loadSection(s.key); }catch(e){ console.warn('overview load fail', s.key, e); }
+  }));
+  if(currentRole === 'manager' && $('managerOverview').style.display !== 'none'){
+    buildManagerOverviewHtml();
+  }
 }
 
 function mgrNav(key, dir){
   if(dir === 'clear'){
     managerDates[key] = '';
   }else{
-    const cur = managerDates[key] || new Date().toISOString().slice(0,10);
+    const cur = managerDates[key] || toLocalISODate(new Date());
     const d = new Date(cur + 'T00:00:00');
     d.setDate(d.getDate() + (dir === 'prev' ? -1 : 1));
-    managerDates[key] = d.toISOString().slice(0,10);
+    managerDates[key] = toLocalISODate(d);
   }
   renderManagerOverview();
 }
@@ -1074,11 +1096,11 @@ $('addBtn').addEventListener('click', async ()=>{
   const now = new Date();
   let chosenDateISO = $('dateFilterInput').value;
   if(!chosenDateISO || !/^\d{4}-\d{2}-\d{2}$/.test(chosenDateISO)){
-    chosenDateISO = now.toISOString().slice(0,10);
+    chosenDateISO = toLocalISODate(now);
   }
   let chosenDateObj = new Date(chosenDateISO + 'T00:00:00');
   if(isNaN(chosenDateObj.getTime())){
-    chosenDateISO = now.toISOString().slice(0,10);
+    chosenDateISO = toLocalISODate(now);
     chosenDateObj = now;
   }
   const entry = {
@@ -1143,7 +1165,7 @@ async function openSection(key){
   const s = SECTIONS.find(x=>x.key===key);
   $('sectionTitle').textContent = s.icon + '  ' + s.name;
   $('sectionTodayLabel').textContent = 'اليوم: ' + todayStr();
-  $('dateFilterInput').value = new Date().toISOString().slice(0,10);
+  $('dateFilterInput').value = toLocalISODate(new Date());
   if(MOVEMENT_OPTIONS[key]){
     $('f_movement_wrap').style.display = 'block';
     $('f_movement_label').textContent = 'نوع الحركة';
@@ -1217,7 +1239,7 @@ function renderBreakdownRows(byT){
 function movementBox(title, byT, dateLabel){
   const tQty = Object.values(byT).reduce((a,x)=>a+x.qty,0);
   const tWeight = Object.values(byT).reduce((a,x)=>a+x.weight,0);
-  const label = dateLabel || formatDDMMYYYY(new Date().toISOString().slice(0,10));
+  const label = dateLabel || formatDDMMYYYY(toLocalISODate(new Date()));
   return `
     <div class="panel" style="margin-bottom:14px;">
       <div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
@@ -1523,10 +1545,10 @@ function sectionDateNav(dir){
   if(dir === 'clear'){
     $('dateFilterInput').value = '';
   }else{
-    const cur = $('dateFilterInput').value || new Date().toISOString().slice(0,10);
+    const cur = $('dateFilterInput').value || toLocalISODate(new Date());
     const d = new Date(cur + 'T00:00:00');
     d.setDate(d.getDate() + (dir === 'prev' ? -1 : 1));
-    $('dateFilterInput').value = d.toISOString().slice(0,10);
+    $('dateFilterInput').value = toLocalISODate(d);
   }
   renderTable();
 }
@@ -1687,6 +1709,17 @@ function setPeriod(p){
     $(map[k]).style.borderColor = (k === p) ? 'var(--gold)' : 'var(--line)';
     $(map[k]).style.color = (k === p) ? 'var(--gold-bright)' : 'var(--muted)';
   });
+  if(p === 'week'){
+    // اعرض آخر أسبوع منتهي بالكامل (مش الأسبوع الحالي الناقص)
+    const d = new Date(); d.setDate(d.getDate() - 7);
+    $('reportDate').value = toLocalISODate(d);
+  }else if(p === 'month'){
+    // اعرض آخر شهر منتهي بالكامل (مش الشهر الحالي الناقص)
+    const now = new Date();
+    let py = now.getFullYear(), pm = now.getMonth() - 1;
+    if(pm < 0){ pm = 11; py -= 1; }
+    $('reportMonth').value = py + '-' + String(pm+1).padStart(2,'0');
+  }
   renderReport();
 }
 $('periodDayBtn').addEventListener('click', ()=>setPeriod('day'));
@@ -1695,14 +1728,14 @@ $('periodMonthBtn').addEventListener('click', ()=>setPeriod('month'));
 
 function getReportRange(){
   if(reportPeriod === 'month'){
-    const val = $('reportMonth').value || new Date().toISOString().slice(0,7);
+    const val = $('reportMonth').value || toLocalISODate(new Date()).slice(0,7);
     const [y,m] = val.split('-').map(Number);
     const start = new Date(y, m-1, 1);
     const end = new Date(y, m, 0);
     const label = start.toLocaleDateString('ar-EG', {year:'numeric', month:'long'});
     return {start, end, label};
   }
-  const dVal = $('reportDate').value || new Date().toISOString().slice(0,10);
+  const dVal = $('reportDate').value || toLocalISODate(new Date());
   const d = new Date(dVal + 'T00:00:00');
   if(reportPeriod === 'week'){
     const start = new Date(d); start.setDate(d.getDate() - d.getDay());
@@ -1729,29 +1762,31 @@ $('reportDate').addEventListener('change', renderReport);
 $('reportMonth').addEventListener('change', renderReport);
 $('reportPrevBtn').addEventListener('click', ()=>{
   if(reportPeriod === 'month'){
-    const val = $('reportMonth').value || new Date().toISOString().slice(0,7);
+    const val = $('reportMonth').value || toLocalISODate(new Date()).slice(0,7);
     const [y,m] = val.split('-').map(Number);
-    const d = new Date(y, m-2, 1);
-    $('reportMonth').value = d.toISOString().slice(0,7);
+    let py = y, pm = m - 2; // m is 1-based; -2 to go one month back in 0-based terms
+    if(pm < 0){ pm = 11; py -= 1; }
+    $('reportMonth').value = py + '-' + String(pm+1).padStart(2,'0');
   }else{
     const stepDays = reportPeriod === 'week' ? 7 : 1;
-    const d = new Date(($('reportDate').value || new Date().toISOString().slice(0,10)) + 'T00:00:00');
+    const d = new Date(($('reportDate').value || toLocalISODate(new Date())) + 'T00:00:00');
     d.setDate(d.getDate() - stepDays);
-    $('reportDate').value = d.toISOString().slice(0,10);
+    $('reportDate').value = toLocalISODate(d);
   }
   renderReport();
 });
 $('reportNextBtn').addEventListener('click', ()=>{
   if(reportPeriod === 'month'){
-    const val = $('reportMonth').value || new Date().toISOString().slice(0,7);
+    const val = $('reportMonth').value || toLocalISODate(new Date()).slice(0,7);
     const [y,m] = val.split('-').map(Number);
-    const d = new Date(y, m, 1);
-    $('reportMonth').value = d.toISOString().slice(0,7);
+    let ny = y, nm = m; // m is 1-based; nm(0-based)=m corresponds to next month
+    if(nm > 11){ nm = 0; ny += 1; }
+    $('reportMonth').value = ny + '-' + String(nm+1).padStart(2,'0');
   }else{
     const stepDays = reportPeriod === 'week' ? 7 : 1;
-    const d = new Date(($('reportDate').value || new Date().toISOString().slice(0,10)) + 'T00:00:00');
+    const d = new Date(($('reportDate').value || toLocalISODate(new Date())) + 'T00:00:00');
     d.setDate(d.getDate() + stepDays);
-    $('reportDate').value = d.toISOString().slice(0,10);
+    $('reportDate').value = toLocalISODate(d);
   }
   renderReport();
 });
@@ -1818,11 +1853,64 @@ async function renderReport(){
 
   lastReportRows = all;
   lastReportDate = label;
+
+  // ---- تحليل (daily/weekly/monthly analysis) ----
+  const diffDays = Math.round((end - start) / 86400000) + 1;
+  const prevEnd = new Date(start); prevEnd.setDate(prevEnd.getDate() - 1);
+  const prevStart = new Date(prevEnd); prevStart.setDate(prevStart.getDate() - (diffDays - 1));
+  const prevStartISO = toLocalISODate(prevStart);
+  const prevEndISO = toLocalISODate(prevEnd);
+  let allPrev = [];
+  sectionResults.forEach(({entries})=>{
+    entries.filter(e => e.dateISO >= prevStartISO && e.dateISO <= prevEndISO).forEach(e => allPrev.push(e));
+  });
+  const prevWeight = allPrev.reduce((a,e)=>a + e.weight*e.qty, 0);
+  const prevQty = allPrev.reduce((a,e)=>a + e.qty, 0);
+  const weightChangePct = prevWeight > 0 ? ((totalWeight - prevWeight) / prevWeight * 100) : (totalWeight > 0 ? 100 : 0);
+  const qtyChangePct = prevQty > 0 ? ((totalQty - prevQty) / prevQty * 100) : (totalQty > 0 ? 100 : 0);
+  const avgWeightPerEntry = all.length ? (totalWeight / all.length) : 0;
+
+  const sectionBreakdown = SECTIONS.map(s=>{
+    const secEntries = all.filter(e => e.sectionName === s.name);
+    const w = secEntries.reduce((a,e)=>a + e.weight*e.qty, 0);
+    return {name:s.name, icon:s.icon, weight:w, qty: secEntries.reduce((a,e)=>a+e.qty,0), pct: totalWeight>0 ? (w/totalWeight*100) : 0};
+  }).filter(x=>x.weight>0).sort((a,b)=>b.weight-a.weight);
+
+  const trendArrow = (pct)=> pct > 0.5 ? `<span style="color:var(--green);">▲ ${pct.toFixed(1)}%</span>` : (pct < -0.5 ? `<span style="color:var(--rust);">▼ ${Math.abs(pct).toFixed(1)}%</span>` : `<span style="color:var(--muted);">— بدون تغيير</span>`);
+
+  $('reportAnalysis').innerHTML = `
+    <div class="summary" style="margin-bottom:14px;">
+      <div class="sumBox"><div class="n">${fmtWeight(avgWeightPerEntry)}</div><div class="l">متوسط وزن القيد (جم)</div></div>
+      <div class="sumBox"><div class="n">${trendArrow(weightChangePct)}</div><div class="l">تغيّر الوزن عن الفترة السابقة</div></div>
+      <div class="sumBox"><div class="n">${trendArrow(qtyChangePct)}</div><div class="l">تغيّر العدد عن الفترة السابقة</div></div>
+      <div class="sumBox"><div class="n">${fmtWeight(prevWeight)}</div><div class="l">وزن الفترة السابقة (جم)</div></div>
+    </div>
+    <h4 style="margin-bottom:8px;">الأقسام الأكثر نشاطًا (بالوزن)</h4>
+    <table>
+      <thead><tr><th>الخانة</th><th>الوزن (جم)</th><th>العدد</th><th>النسبة من الإجمالي</th></tr></thead>
+      <tbody>
+        ${sectionBreakdown.map(x=>`<tr><td>${x.icon} ${x.name}</td><td>${fmtWeight(x.weight)}</td><td>${x.qty}</td><td>${x.pct.toFixed(1)}%</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--muted);">لا توجد بيانات</td></tr>'}
+      </tbody>
+    </table>
+    <h4 style="margin:14px 0 8px;">توزيع العيار</h4>
+    <table>
+      <thead><tr><th>العيار</th><th>الوزن (جم)</th><th>النسبة من الإجمالي</th></tr></thead>
+      <tbody>
+        <tr><td>عيار 21</td><td>${fmtWeight(w21Grand)}</td><td>${totalWeight>0 ? (w21Grand/totalWeight*100).toFixed(1) : '0'}%</td></tr>
+        <tr><td>عيار 24</td><td>${fmtWeight(w24Grand)}</td><td>${totalWeight>0 ? (w24Grand/totalWeight*100).toFixed(1) : '0'}%</td></tr>
+      </tbody>
+    </table>
+  `;
+
+  lastReportAnalysis = {avgWeightPerEntry, weightChangePct, qtyChangePct, prevWeight, prevQty, sectionBreakdown, w21Grand, w24Grand, totalWeight, totalQty, count: all.length};
+  lastReportPeriodLabel = {day:'اليومي', week:'الأسبوعي', month:'الشهري'}[reportPeriod] || 'اليومي';
 }
 
 /* ================= PRINTING ================= */
 let lastReportRows = [];
 let lastReportDate = '';
+let lastReportAnalysis = null;
+let lastReportPeriodLabel = '';
 
 function printFromArea(bodyHtml){
   $('printArea').innerHTML = bodyHtml + `<div class="pfooter">GBI · نظام المتابعة المركزية — طُبع بتاريخ ${new Date().toLocaleString('ar-EG')}</div>`;
@@ -1992,6 +2080,40 @@ $('printReportBtn').addEventListener('click', ()=>{
       <div class="pbox"><div class="n">${fmtWeight(w24Grand)}</div><div class="l">عيار 24 (جم)</div></div>
     </div>
     ${sectionsHtml || '<div class="meta" style="text-align:center;margin-top:20px;">لا توجد قيود في هذه الفترة</div>'}
+  `;
+  printFromArea(html);
+});
+
+$('printAnalysisBtn').addEventListener('click', ()=>{
+  if(!lastReportAnalysis) return;
+  const a = lastReportAnalysis;
+  const trendText = (pct)=> pct > 0.5 ? `▲ ${pct.toFixed(1)}%` : (pct < -0.5 ? `▼ ${Math.abs(pct).toFixed(1)}%` : '— بدون تغيير');
+  const sectionRows = a.sectionBreakdown.map(x=>`
+    <tr><td>${x.icon} ${x.name}</td><td>${fmtWeight(x.weight)}</td><td>${x.qty}</td><td>${x.pct.toFixed(1)}%</td></tr>`).join('')
+    || '<tr><td colspan="4" style="text-align:center;color:#888;">لا توجد بيانات</td></tr>';
+
+  const html = `
+    <h1>📈 تحليل التقرير ${lastReportPeriodLabel} — GBI</h1>
+    <h2>${lastReportDate}</h2>
+    <div class="psummary">
+      <div class="pbox"><div class="n">${fmtWeight(a.avgWeightPerEntry)}</div><div class="l">متوسط وزن القيد (جم)</div></div>
+      <div class="pbox"><div class="n">${trendText(a.weightChangePct)}</div><div class="l">تغيّر الوزن عن الفترة السابقة</div></div>
+      <div class="pbox"><div class="n">${trendText(a.qtyChangePct)}</div><div class="l">تغيّر العدد عن الفترة السابقة</div></div>
+      <div class="pbox"><div class="n">${fmtWeight(a.prevWeight)}</div><div class="l">وزن الفترة السابقة (جم)</div></div>
+    </div>
+    <h2 style="margin-top:18px;">الأقسام الأكثر نشاطًا (بالوزن)</h2>
+    <table>
+      <thead><tr><th>الخانة</th><th>الوزن (جم)</th><th>العدد</th><th>النسبة من الإجمالي</th></tr></thead>
+      <tbody>${sectionRows}</tbody>
+    </table>
+    <h2 style="margin-top:18px;">توزيع العيار</h2>
+    <table>
+      <thead><tr><th>العيار</th><th>الوزن (جم)</th><th>النسبة من الإجمالي</th></tr></thead>
+      <tbody>
+        <tr><td>عيار 21</td><td>${fmtWeight(a.w21Grand)}</td><td>${a.totalWeight>0 ? (a.w21Grand/a.totalWeight*100).toFixed(1) : '0'}%</td></tr>
+        <tr><td>عيار 24</td><td>${fmtWeight(a.w24Grand)}</td><td>${a.totalWeight>0 ? (a.w24Grand/a.totalWeight*100).toFixed(1) : '0'}%</td></tr>
+      </tbody>
+    </table>
   `;
   printFromArea(html);
 });
