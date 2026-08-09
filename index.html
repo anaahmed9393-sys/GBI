@@ -204,19 +204,21 @@
 
   /* highlighted report totals */
   .summary.reportSummary{
-    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
     gap:14px;
     margin-bottom:24px;
   }
   .summary.reportSummary .sumBox{
     background:linear-gradient(180deg, var(--panel-2), var(--panel));
     border:1.5px solid var(--gold);
+    border-top:3px solid var(--gold-bright);
     border-radius:14px;
-    padding:20px 14px;
+    padding:18px 14px;
     text-align:center;
     box-shadow:0 6px 16px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(201,162,39,0.08);
   }
-  .summary.reportSummary .sumBox .n{font-size:27px;}
+  .summary.reportSummary .sumBox .ico{font-size:19px;margin-bottom:6px;display:block;}
+  .summary.reportSummary .sumBox .n{font-size:28px;line-height:1.2;}
   .summary.reportSummary .sumBox .l{font-size:13px;margin-top:6px;}
 
   /* form panel */
@@ -1751,23 +1753,29 @@ async function renderReport(){
   const startISO = toLocalISODate(start);
   const endISO = toLocalISODate(end);
 
+  // show something immediately instead of a blank screen while data loads
+  $('reportSummary').innerHTML = `<div class="sumBox" style="grid-column:1/-1;text-align:center;color:var(--muted);">... جارِ تحميل التقرير</div>`;
+
   let all = [];
-  for(const s of SECTIONS){
+  const sectionResults = await Promise.all(SECTIONS.map(async s=>{
     let entries = [];
     try{ entries = await loadSection(s.key); }catch(e){ console.warn('report load fail', s.key, e); }
-    (entries||[]).filter(e => e.dateISO >= startISO && e.dateISO <= endISO).forEach(e => all.push({...e, sectionName:s.name, sectionIcon:s.icon}));
-  }
+    return {s, entries: entries || []};
+  }));
+  sectionResults.forEach(({s, entries})=>{
+    entries.filter(e => e.dateISO >= startISO && e.dateISO <= endISO).forEach(e => all.push({...e, sectionName:s.name, sectionIcon:s.icon}));
+  });
 
   const totalWeight = all.reduce((a,e)=>a + e.weight*e.qty, 0);
   const totalQty = all.reduce((a,e)=>a + e.qty, 0);
   const w21Grand = all.filter(e=>String(e.karat)==='21').reduce((a,e)=>a+e.weight*e.qty,0);
   const w24Grand = all.filter(e=>String(e.karat)==='24').reduce((a,e)=>a+e.weight*e.qty,0);
   $('reportSummary').innerHTML = `
-    <div class="sumBox"><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
-    <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
-    <div class="sumBox"><div class="n">${fmtWeight(totalWeight)}</div><div class="l">إجمالي الوزن (جم)</div></div>
-    <div class="sumBox"><div class="n">${fmtWeight(w21Grand)}</div><div class="l">إجمالي وزن عيار 21 (جم)</div></div>
-    <div class="sumBox"><div class="n">${fmtWeight(w24Grand)}</div><div class="l">إجمالي وزن عيار 24 (جم)</div></div>
+    <div class="sumBox"><span class="ico">📋</span><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
+    <div class="sumBox"><span class="ico">#️⃣</span><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
+    <div class="sumBox"><span class="ico">⚖️</span><div class="n">${fmtWeight(totalWeight)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+    <div class="sumBox"><span class="ico">🟡</span><div class="n">${fmtWeight(w21Grand)}</div><div class="l">إجمالي وزن عيار 21 (جم)</div></div>
+    <div class="sumBox"><span class="ico">🟠</span><div class="n">${fmtWeight(w24Grand)}</div><div class="l">إجمالي وزن عيار 24 (جم)</div></div>
   `;
 
   let secHtml = '<h4>تفصيل حسب الخانة</h4><div class="summary">';
