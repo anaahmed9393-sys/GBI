@@ -202,6 +202,23 @@
   .sumBox .n{font-family:'Cairo',sans-serif;font-weight:800;font-size:20px;color:var(--gold-bright);}
   .sumBox .l{font-size:12px;color:var(--muted);margin-top:2px;}
 
+  /* highlighted report totals */
+  .summary.reportSummary{
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    gap:14px;
+    margin-bottom:24px;
+  }
+  .summary.reportSummary .sumBox{
+    background:linear-gradient(180deg, var(--panel-2), var(--panel));
+    border:1.5px solid var(--gold);
+    border-radius:14px;
+    padding:20px 14px;
+    text-align:center;
+    box-shadow:0 6px 16px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(201,162,39,0.08);
+  }
+  .summary.reportSummary .sumBox .n{font-size:27px;}
+  .summary.reportSummary .sumBox .l{font-size:13px;margin-top:6px;}
+
   /* form panel */
   .panel{
     background:var(--panel);border:1px solid var(--line);border-radius:14px;
@@ -504,7 +521,7 @@
         </div>
       </div>
 
-      <div class="summary" id="reportSummary"></div>
+      <div class="summary reportSummary" id="reportSummary"></div>
       <div class="panel" id="reportBySection"></div>
 
       <div class="panel" style="padding:0;overflow-x:auto;">
@@ -710,9 +727,13 @@ const memoryDB = {}; // in-memory fallback if persistent storage is unavailable
 /* ================= HELPERS ================= */
 function $(id){return document.getElementById(id);}
 function uid(){return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);}
+function fmtDateDMY(d){
+  return d.getDate() + '/' + (d.getMonth()+1) + '/' + d.getFullYear();
+}
 function todayStr(){
   const d = new Date();
-  return d.toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'2-digit', day:'2-digit'});
+  const weekday = d.toLocaleDateString('ar-EG', {weekday:'long'});
+  return weekday + ' ' + fmtDateDMY(d);
 }
 function showToast(msg){
   $('toastMsg').textContent = msg;
@@ -1033,7 +1054,7 @@ $('addBtn').addEventListener('click', async ()=>{
     karat,
     weight, qty, notes,
     qtyNA,
-    date: chosenDateObj.toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'2-digit', day:'2-digit'}),
+    date: chosenDateObj.toLocaleDateString('ar-EG', {weekday:'long'}) + ' ' + fmtDateDMY(chosenDateObj),
     dateISO: chosenDateISO,
     by: currentRole,
     ts: now.getTime()
@@ -1154,7 +1175,7 @@ function renderBreakdownRows(byT){
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid rgba(58,47,32,0.4);font-size:13.5px;">
       <span style="color:var(--gold-bright);font-weight:700;">العملة: ${k}</span>
       <span>${byT[k].qty} قطعة</span>
-      <span>${byT[k].weight.toFixed(3)} جم</span>
+      <span>${fmtWeight(byT[k].weight)} جم</span>
     </div>`).join('');
   if(!rows) rows = '<div style="color:var(--muted);font-size:13px;padding:8px 0;">لا يوجد</div>';
   return rows;
@@ -1172,7 +1193,7 @@ function movementBox(title, byT, dateLabel){
       <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:2px solid var(--gold);font-size:14px;font-weight:700;">
         <span>الإجمالي</span>
         <span>${tQty} قطعة</span>
-        <span>${tWeight.toFixed(3)} جم</span>
+        <span>${fmtWeight(tWeight)} جم</span>
       </div>
       ${renderBreakdownRows(byT)}
     </div>`;
@@ -1453,18 +1474,15 @@ function buildKhaamExtraHtml(entries){
   const g875 = entries.reduce((a,e)=>a+(e.gold875||0),0);
   return `
     <div class="sumBox"><div class="n">${dulashTotal}</div><div class="l">إجمالي عدد الدلوش</div></div>
-    <div class="sumBox"><div class="n">${g9999.toFixed(3)}</div><div class="l">ذهب خام 999.9 (جم)</div></div>
-    <div class="sumBox"><div class="n">${g875.toFixed(3)}</div><div class="l">ذهب خام 875 (جم)</div></div>
+    <div class="sumBox"><div class="n">${fmtWeight(g9999)}</div><div class="l">ذهب خام 999.9 (جم)</div></div>
+    <div class="sumBox"><div class="n">${fmtWeight(g875)}</div><div class="l">ذهب خام 875 (جم)</div></div>
   `;
 }
 
 function formatDDMMYYYY(dateISO){
   const d = new Date(dateISO + 'T00:00:00');
-  const dd = String(d.getDate()).padStart(2,'0');
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const yyyy = d.getFullYear();
   const weekday = d.toLocaleDateString('ar-EG', {weekday:'long'});
-  return weekday + ' ' + dd + '/' + mm + '/' + yyyy;
+  return weekday + ' ' + fmtDateDMY(d);
 }
 
 function sectionDateNav(dir){
@@ -1527,7 +1545,7 @@ function renderTable(){
       <td data-label="التاريخ">${e.date}</td>
       <td data-label="الصنف"><span class="tag">${e.type}</span>${movementTag}</td>
       <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
-      <td data-label="الوزن">${e.weight.toFixed(3)}</td>
+      <td data-label="الوزن">${fmtWeight(e.weight)}</td>
       <td data-label="العدد">${e.qtyNA ? 'لا يوجد' : e.qty}</td>
       <td data-label="بواسطة">${ROLE_LABELS[e.by] || e.by || '—'}</td>
       <td data-label="ملاحظات">${(e.notes || '—')}${extraNotes}</td>
@@ -1655,11 +1673,11 @@ function getReportRange(){
   if(reportPeriod === 'week'){
     const start = new Date(d); start.setDate(d.getDate() - d.getDay());
     const end = new Date(start); end.setDate(start.getDate() + 6);
-    const label = 'من ' + start.toLocaleDateString('ar-EG') + ' إلى ' + end.toLocaleDateString('ar-EG');
+    const label = 'من ' + fmtDateDMY(start) + ' إلى ' + fmtDateDMY(end);
     return {start, end, label};
   }
   const weekday = d.toLocaleDateString('ar-EG', {weekday:'long'});
-  const label = weekday + ' — ' + d.toLocaleDateString('ar-EG', {year:'numeric', month:'2-digit', day:'2-digit'});
+  const label = weekday + ' — ' + fmtDateDMY(d);
   return {start:d, end:d, label};
 }
 
@@ -1750,7 +1768,7 @@ async function renderReport(){
       <td data-label="الخانة">${e.sectionIcon} ${e.sectionName}</td>
       <td data-label="الصنف"><span class="tag">${e.type}</span></td>
       <td data-label="العيار">${e.karat ? e.karat + ' عيار' : '—'}</td>
-      <td data-label="الوزن">${e.weight.toFixed(3)}</td>
+      <td data-label="الوزن">${fmtWeight(e.weight)}</td>
       <td data-label="العدد">${e.qty}</td>
       <td data-label="بواسطة">${ROLE_LABELS[e.by] || e.by || '—'}</td>
       <td data-label="ملاحظات">${e.notes || '—'}</td>
@@ -1791,7 +1809,7 @@ $('printAllBtn').addEventListener('click', async ()=>{
         <td>${e.date}</td>
         <td>${e.type}${e.movement ? ' — ' + e.movement : ''}</td>
         <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
-        <td>${e.weight.toFixed(3)}</td>
+        <td>${fmtWeight(e.weight)}</td>
         <td>${e.qty}</td>
         <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
         <td>${e.notes || '—'}</td>
@@ -1799,7 +1817,7 @@ $('printAllBtn').addEventListener('click', async ()=>{
 
     sectionsHtml += `
       <h1 style="margin-top:22px;">${s.icon} ${s.name}</h1>
-      <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
+      <div class="meta">إجمالي الوزن: ${fmtWeight(totalWeight)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
       <table>
         <thead><tr><th>التاريخ</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="7" style="text-align:center;color:#888;">لا توجد قيود</td></tr>'}</tbody>
@@ -1809,7 +1827,7 @@ $('printAllBtn').addEventListener('click', async ()=>{
   const html = `
     <h1>GBI — تقرير شامل لكل الخانات</h1>
     <h2>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</h2>
-    <div class="meta">إجمالي الوزن الكلي: ${grandWeight.toFixed(3)} جم — إجمالي العدد الكلي: ${grandQty} — إجمالي القيود: ${grandCount}</div>
+    <div class="meta">إجمالي الوزن الكلي: ${fmtWeight(grandWeight)} جم — إجمالي العدد الكلي: ${grandQty} — إجمالي القيود: ${grandCount}</div>
     ${sectionsHtml}
   `;
   printFromArea(html);
@@ -1825,7 +1843,7 @@ $('printSectionBtn').addEventListener('click', ()=>{
       <td>${e.date}</td>
       <td>${e.type}${e.movement ? ' — ' + e.movement : ''}</td>
       <td>${e.karat ? e.karat + ' عيار' : '—'}</td>
-      <td>${e.weight.toFixed(3)}</td>
+      <td>${fmtWeight(e.weight)}</td>
       <td>${e.qty}</td>
       <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
       <td>${e.notes || '—'}</td>
@@ -1833,7 +1851,7 @@ $('printSectionBtn').addEventListener('click', ()=>{
   const html = `
     <h1>${s.icon} ${s.name} — GBI</h1>
     <h2>تاريخ الطباعة: ${new Date().toLocaleString('ar-EG')}</h2>
-    <div class="meta">إجمالي الوزن: ${totalWeight.toFixed(3)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
+    <div class="meta">إجمالي الوزن: ${fmtWeight(totalWeight)} جم — إجمالي العدد: ${totalQty} — عدد القيود: ${entries.length}</div>
     <table>
       <thead><tr><th>التاريخ</th><th>الصنف</th><th>العيار</th><th>الوزن</th><th>العدد</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
       <tbody>${rows}</tbody>
@@ -1857,7 +1875,7 @@ $('printReportBtn').addEventListener('click', ()=>{
 
     sectionsHtml += `
       <h1 style="margin-top:22px;">${s.icon} ${s.name}</h1>
-      <div class="meta">إجمالي القسم — الوزن: ${secWeight.toFixed(3)} جم — العدد: ${secQty} — عدد القيود: ${secRows.length}</div>`;
+      <div class="meta">إجمالي القسم — الوزن: ${fmtWeight(secWeight)} جم — العدد: ${secQty} — عدد القيود: ${secRows.length}</div>`;
 
     ['21','24'].forEach(karatVal=>{
       const karatRows = secRows.filter(e => String(e.karat) === karatVal);
@@ -1867,14 +1885,14 @@ $('printReportBtn').addEventListener('click', ()=>{
       const rows = karatRows.map(e=>`
         <tr>
           <td>${e.type}</td>
-          <td>${e.weight.toFixed(3)}</td>
+          <td>${fmtWeight(e.weight)}</td>
           <td>${e.qty}</td>
           <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
           <td>${e.notes || '—'}</td>
         </tr>`).join('');
       sectionsHtml += `
         <h2 style="margin-top:12px;">عيار ${karatVal}</h2>
-        <div class="meta">الوزن: ${kWeight.toFixed(3)} جم — العدد: ${kQty} — عدد القيود: ${karatRows.length}</div>
+        <div class="meta">الوزن: ${fmtWeight(kWeight)} جم — العدد: ${kQty} — عدد القيود: ${karatRows.length}</div>
         <table>
           <thead><tr><th>الصنف</th><th>الوزن</th><th>العدد</th><th>بواسطة</th><th>ملاحظات</th></tr></thead>
           <tbody>${rows}</tbody>
@@ -1887,7 +1905,7 @@ $('printReportBtn').addEventListener('click', ()=>{
       const rows = noKaratRows.map(e=>`
         <tr>
           <td>${e.type}</td>
-          <td>${e.weight.toFixed(3)}</td>
+          <td>${fmtWeight(e.weight)}</td>
           <td>${e.qty}</td>
           <td>${ROLE_LABELS[e.by] || e.by || '—'}</td>
           <td>${e.notes || '—'}</td>
@@ -1904,7 +1922,7 @@ $('printReportBtn').addEventListener('click', ()=>{
   const html = `
     <h1>📊 التقرير ${periodLabel} — GBI</h1>
     <h2>${lastReportDate}</h2>
-    <div class="meta">إجمالي الوزن الكلي: ${totalWeight.toFixed(3)} جم — إجمالي العدد الكلي: ${totalQty} — إجمالي القيود: ${all.length}</div>
+    <div class="meta">إجمالي الوزن الكلي: ${fmtWeight(totalWeight)} جم — إجمالي العدد الكلي: ${totalQty} — إجمالي القيود: ${all.length}</div>
     ${sectionsHtml || '<div class="meta" style="text-align:center;margin-top:20px;">لا توجد قيود في هذه الفترة</div>'}
   `;
   printFromArea(html);
