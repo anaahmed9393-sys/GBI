@@ -217,7 +217,6 @@
     text-align:center;
     box-shadow:0 6px 16px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(201,162,39,0.08);
   }
-  .summary.reportSummary .sumBox .ico{font-size:19px;margin-bottom:6px;display:block;}
   .summary.reportSummary .sumBox .n{font-size:28px;line-height:1.2;}
   .summary.reportSummary .sumBox .l{font-size:13px;margin-top:6px;}
 
@@ -427,6 +426,16 @@
   body.print-mode #printArea h1{font-size:19px;margin-bottom:2px;}
   body.print-mode #printArea h2{font-size:13px;color:#555;margin-bottom:12px;font-weight:400;}
   body.print-mode #printArea .meta{font-size:12px;color:#333;margin-bottom:12px;padding:8px 12px;background:#f3f3f3;border-radius:6px;}
+  body.print-mode #printArea .psummary{
+    display:grid;grid-template-columns:repeat(5,1fr);gap:10px;
+    margin-bottom:16px;
+  }
+  body.print-mode #printArea .pbox{
+    border:1.5px solid #b8860b;border-top:3px solid #b8860b;
+    border-radius:8px;padding:10px 6px;text-align:center;background:#fbf7ec;
+  }
+  body.print-mode #printArea .pbox .n{font-size:17px;font-weight:800;color:#1b1508;}
+  body.print-mode #printArea .pbox .l{font-size:10px;color:#555;margin-top:3px;}
   body.print-mode #printArea table{width:100%;border-collapse:collapse;margin-top:8px;}
   body.print-mode #printArea th, body.print-mode #printArea td{border:1px solid #ccc;padding:5px 7px;font-size:11px;text-align:right;}
   body.print-mode #printArea th{background:#eee;}
@@ -1708,8 +1717,8 @@ function getReportRange(){
 
 $('openReportBtn').addEventListener('click', async ()=>{
   const today = new Date();
-  $('reportDate').value = today.toISOString().slice(0,10);
-  $('reportMonth').value = today.toISOString().slice(0,7);
+  $('reportDate').value = toLocalISODate(today);
+  $('reportMonth').value = toLocalISODate(today).slice(0,7);
   $('dashboardView').style.display = 'none';
   $('sectionView').style.display = 'none';
   $('reportView').style.display = 'block';
@@ -1771,11 +1780,11 @@ async function renderReport(){
   const w21Grand = all.filter(e=>String(e.karat)==='21').reduce((a,e)=>a+e.weight*e.qty,0);
   const w24Grand = all.filter(e=>String(e.karat)==='24').reduce((a,e)=>a+e.weight*e.qty,0);
   $('reportSummary').innerHTML = `
-    <div class="sumBox"><span class="ico">📋</span><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
-    <div class="sumBox"><span class="ico">#️⃣</span><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
-    <div class="sumBox"><span class="ico">⚖️</span><div class="n">${fmtWeight(totalWeight)}</div><div class="l">إجمالي الوزن (جم)</div></div>
-    <div class="sumBox"><span class="ico">🟡</span><div class="n">${fmtWeight(w21Grand)}</div><div class="l">إجمالي وزن عيار 21 (جم)</div></div>
-    <div class="sumBox"><span class="ico">🟠</span><div class="n">${fmtWeight(w24Grand)}</div><div class="l">إجمالي وزن عيار 24 (جم)</div></div>
+    <div class="sumBox"><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
+    <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
+    <div class="sumBox"><div class="n">${fmtWeight(totalWeight)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+    <div class="sumBox"><div class="n">${fmtWeight(w21Grand)}</div><div class="l">إجمالي وزن عيار 21 (جم)</div></div>
+    <div class="sumBox"><div class="n">${fmtWeight(w24Grand)}</div><div class="l">إجمالي وزن عيار 24 (جم)</div></div>
   `;
 
   let secHtml = '<h4>تفصيل حسب الخانة</h4><div class="summary">';
@@ -1895,6 +1904,8 @@ $('printReportBtn').addEventListener('click', ()=>{
   const all = lastReportRows;
   const totalWeight = all.reduce((a,e)=>a+e.weight*e.qty, 0);
   const totalQty = all.reduce((a,e)=>a+e.qty, 0);
+  const w21Grand = all.filter(e=>String(e.karat)==='21').reduce((a,e)=>a+e.weight*e.qty,0);
+  const w24Grand = all.filter(e=>String(e.karat)==='24').reduce((a,e)=>a+e.weight*e.qty,0);
   const periodLabel = {day:'اليومي', week:'الأسبوعي', month:'الشهري'}[reportPeriod] || 'اليومي';
 
   let sectionsHtml = '';
@@ -1953,7 +1964,13 @@ $('printReportBtn').addEventListener('click', ()=>{
   const html = `
     <h1>📊 التقرير ${periodLabel} — GBI</h1>
     <h2>${lastReportDate}</h2>
-    <div class="meta">إجمالي الوزن الكلي: ${fmtWeight(totalWeight)} جم — إجمالي العدد الكلي: ${totalQty} — إجمالي القيود: ${all.length}</div>
+    <div class="psummary">
+      <div class="pbox"><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
+      <div class="pbox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
+      <div class="pbox"><div class="n">${fmtWeight(totalWeight)}</div><div class="l">إجمالي الوزن (جم)</div></div>
+      <div class="pbox"><div class="n">${fmtWeight(w21Grand)}</div><div class="l">عيار 21 (جم)</div></div>
+      <div class="pbox"><div class="n">${fmtWeight(w24Grand)}</div><div class="l">عيار 24 (جم)</div></div>
+    </div>
     ${sectionsHtml || '<div class="meta" style="text-align:center;margin-top:20px;">لا توجد قيود في هذه الفترة</div>'}
   `;
   printFromArea(html);
