@@ -913,11 +913,7 @@ function buildDashCards(){
     const entries = sectionCache[s.key] || [];
     const card = document.createElement('div');
     card.className = 'cardTile';
-    let displayCount = entries.length;
-    if(s.key === 'baraqod'){
-      const todayISO = toLocalISODate(new Date());
-      displayCount = entries.filter(e => e.dateISO === todayISO).length;
-    }
+    const displayCount = entries.length;
     card.innerHTML = `
       <span class="count">${displayCount} قيد</span>
       <span class="ico">${s.icon}</span>
@@ -1815,7 +1811,7 @@ async function renderReport(){
   const w21Grand = all.filter(e=>String(e.karat)==='21').reduce((a,e)=>a+e.weight*e.qty,0);
   const w24Grand = all.filter(e=>String(e.karat)==='24').reduce((a,e)=>a+e.weight*e.qty,0);
   $('reportSummary').innerHTML = `
-    <div class="sumBox"><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
+    <div class="sumBox"><div class="n">${all.length}</div><div class="l">عدد الأصناف</div></div>
     <div class="sumBox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
     <div class="sumBox"><div class="n">${fmtWeight(totalWeight)}</div><div class="l">إجمالي الوزن (جم)</div></div>
     <div class="sumBox"><div class="n">${fmtWeight(w21Grand)}</div><div class="l">إجمالي وزن عيار 21 (جم)</div></div>
@@ -2018,7 +2014,7 @@ $('printReportBtn').addEventListener('click', ()=>{
     sectionsHtml += `
       <h1 style="margin-top:22px;">${s.icon} ${s.name}</h1>
       <div class="psummary">
-        <div class="pbox"><div class="n">${secRows.length}</div><div class="l">عدد القيود</div></div>
+        <div class="pbox"><div class="n">${secRows.length}</div><div class="l">عدد الأصناف</div></div>
         <div class="pbox"><div class="n">${secQty}</div><div class="l">العدد</div></div>
         <div class="pbox"><div class="n">${fmtWeight(secWeight)}</div><div class="l">الوزن (جم)</div></div>
       </div>`;
@@ -2039,7 +2035,7 @@ $('printReportBtn').addEventListener('click', ()=>{
       sectionsHtml += `
         <h2 style="margin-top:12px;">عيار ${karatVal}</h2>
         <div class="psummary">
-          <div class="pbox"><div class="n">${karatRows.length}</div><div class="l">عدد القيود</div></div>
+          <div class="pbox"><div class="n">${karatRows.length}</div><div class="l">عدد الأصناف</div></div>
           <div class="pbox"><div class="n">${kQty}</div><div class="l">العدد</div></div>
           <div class="pbox"><div class="n">${fmtWeight(kWeight)}</div><div class="l">الوزن (جم)</div></div>
         </div>
@@ -2073,7 +2069,7 @@ $('printReportBtn').addEventListener('click', ()=>{
     <h1>📊 التقرير ${periodLabel} — GBI</h1>
     <h2>${lastReportDate}</h2>
     <div class="psummary">
-      <div class="pbox"><div class="n">${all.length}</div><div class="l">إجمالي القيود</div></div>
+      <div class="pbox"><div class="n">${all.length}</div><div class="l">عدد الأصناف</div></div>
       <div class="pbox"><div class="n">${totalQty}</div><div class="l">إجمالي العدد</div></div>
       <div class="pbox"><div class="n">${fmtWeight(totalWeight)}</div><div class="l">إجمالي الوزن (جم)</div></div>
       <div class="pbox"><div class="n">${fmtWeight(w21Grand)}</div><div class="l">عيار 21 (جم)</div></div>
