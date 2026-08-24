@@ -444,6 +444,10 @@
 </head>
 <body>
 
+<div id="offlineBanner" style="display:none;position:fixed;top:0;inset-inline:0;z-index:9999;background:#b85433;color:#fff;text-align:center;font-size:13px;padding:8px 12px;">
+  ⚠️ مفيش اتصال بقاعدة البيانات حاليًا — أي حاجة تضيفها دلوقتي هتتحفظ مؤقتًا على الجهاز ده بس لحد ما الاتصال يرجع
+</div>
+
 <!-- ============ LOGIN ============ -->
 <div id="loginScreen">
   <div class="seal" id="loginSeal"><span>GBI</span></div>
@@ -742,7 +746,26 @@ let currentUser = null;
 let currentRole = null;
 let currentSectionKey = null;
 let sectionCache = {}; // key -> array of entries
-const memoryDB = {}; // in-memory fallback if persistent storage is unavailable
+const memoryDB = {}; // last-resort in-memory fallback, only used if localStorage itself is unavailable
+
+/* ================= LOCAL FALLBACK STORAGE ================= */
+// If Firestore can't be reached, we fall back to localStorage so data survives
+// a refresh/reopen instead of vanishing (it only syncs to the cloud once the
+// connection is back). We also show a banner so this is never silent.
+function localSet(key, value){
+  try{ localStorage.setItem(key, value); }
+  catch(e){ memoryDB[key] = value; }
+}
+function localGet(key){
+  try{
+    const v = localStorage.getItem(key);
+    if(v !== null) return v;
+  }catch(e){}
+  return memoryDB[key];
+}
+function setOfflineBanner(show){
+  $('offlineBanner').style.display = show ? 'block' : 'none';
+}
 
 /* ================= HELPERS ================= */
 function $(id){return document.getElementById(id);}
@@ -781,6 +804,7 @@ async function loadAuth(){
   try{
     if(!db) throw new Error('Firestore not available');
     const snap = await db.collection('meta').doc('auth').get();
+    setOfflineBanner(false);
     if(snap.exists){
       const data = snap.data();
       if(data && data.admin && data.manager && data.operator) return data;
@@ -794,9 +818,11 @@ async function loadAuth(){
     return def;
   }catch(e){
     console.warn('loadAuth fallback:', e);
-    if(memoryDB[AUTH_KEY]) return JSON.parse(memoryDB[AUTH_KEY]);
+    setOfflineBanner(true);
+    const stored = localGet(AUTH_KEY);
+    if(stored) return JSON.parse(stored);
     const def = defaultAuth();
-    memoryDB[AUTH_KEY] = JSON.stringify(def);
+    localSet(AUTH_KEY, JSON.stringify(def));
     return def;
   }
 }
@@ -804,8 +830,12 @@ async function saveAuth(auth){
   try{
     if(!db) throw new Error('Firestore not available');
     await db.collection('meta').doc('auth').set(auth);
+    setOfflineBanner(false);
   }
-  catch(e){ memoryDB[AUTH_KEY] = JSON.stringify(auth); }
+  catch(e){
+    setOfflineBanner(true);
+    localSet(AUTH_KEY, JSON.stringify(auth));
+  }
 }
 
 $('loginBtn').addEventListener('click', doLogin);
@@ -885,10 +915,13 @@ async function loadSection(key){
     if(!db) throw new Error('Firestore not available');
     const snap = await db.collection('sections').doc(key).get();
     sectionCache[key] = snap.exists ? (snap.data().entries || []) : [];
+    setOfflineBanner(false);
   }catch(e){
     console.warn('loadSection fallback for', key, e);
+    setOfflineBanner(true);
     const dbKey = 'gbi_section_' + key;
-    if(memoryDB[dbKey]) sectionCache[key] = JSON.parse(memoryDB[dbKey]);
+    const stored = localGet(dbKey);
+    if(stored) sectionCache[key] = JSON.parse(stored);
     else sectionCache[key] = sectionCache[key] || [];
   }
   return sectionCache[key];
@@ -897,10 +930,12 @@ async function persistSection(key){
   try{
     if(!db) throw new Error('Firestore not available');
     await db.collection('sections').doc(key).set({entries: sectionCache[key]});
+    setOfflineBanner(false);
   }
   catch(e){
     console.warn('persistSection fallback for', key, e);
-    memoryDB['gbi_section_' + key] = JSON.stringify(sectionCache[key]);
+    setOfflineBanner(true);
+    localSet('gbi_section_' + key, JSON.stringify(sectionCache[key]));
   }
 }
 
@@ -913,11 +948,7 @@ function buildDashCards(){
     const entries = sectionCache[s.key] || [];
     const card = document.createElement('div');
     card.className = 'cardTile';
-    let displayCount = entries.length;
-    if(s.key === 'baraqod'){
-      const todayISO = toLocalISODate(new Date());
-      displayCount = entries.filter(e => e.dateISO === todayISO).length;
-    }
+    const displayCount = entries.length;
     card.innerHTML = `
       <span class="count">${displayCount} قيد</span>
       <span class="ico">${s.icon}</span>
