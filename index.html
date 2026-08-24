@@ -913,7 +913,11 @@ function buildDashCards(){
     const entries = sectionCache[s.key] || [];
     const card = document.createElement('div');
     card.className = 'cardTile';
-    const displayCount = entries.length;
+    let displayCount = entries.length;
+    if(s.key === 'baraqod'){
+      const todayISO = toLocalISODate(new Date());
+      displayCount = entries.filter(e => e.dateISO === todayISO).length;
+    }
     card.innerHTML = `
       <span class="count">${displayCount} قيد</span>
       <span class="ico">${s.icon}</span>
