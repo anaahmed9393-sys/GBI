@@ -742,7 +742,22 @@ let currentUser = null;
 let currentRole = null;
 let currentSectionKey = null;
 let sectionCache = {}; // key -> array of entries
-const memoryDB = {}; // in-memory fallback if persistent storage is unavailable
+// fallback storage if Firestore is unavailable — backed by localStorage so data survives refresh/close
+const memoryDB = new Proxy({}, {
+  get(target, key){
+    if(key in target) return target[key];
+    try{
+      const v = localStorage.getItem(key);
+      if(v !== null){ target[key] = v; return v; }
+    }catch(e){}
+    return undefined;
+  },
+  set(target, key, value){
+    target[key] = value;
+    try{ localStorage.setItem(key, value); }catch(e){}
+    return true;
+  }
+});
 
 /* ================= HELPERS ================= */
 function $(id){return document.getElementById(id);}
@@ -880,11 +895,47 @@ $('settingsBtn').addEventListener('click', async ()=>{
 });
 
 /* ================= DATA ================= */
+// entries are stored one Firestore document per calendar month (sections/{key}/months/{YYYY-MM})
+// instead of one big document per section, so a section is never capped by Firestore's 1MB/doc limit.
+function monthKeyOf(entry){
+  const iso = entry && entry.dateISO;
+  if(iso && /^\d{4}-\d{2}/.test(iso)) return iso.slice(0,7);
+  return 'unknown';
+}
 async function loadSection(key){
   try{
     if(!db) throw new Error('Firestore not available');
-    const snap = await db.collection('sections').doc(key).get();
-    sectionCache[key] = snap.exists ? (snap.data().entries || []) : [];
+    const monthsSnap = await db.collection('sections').doc(key).collection('months').get();
+    let merged = [];
+    monthsSnap.forEach(doc=>{ merged = merged.concat(doc.data().entries || []); });
+
+    // one-time migration: move any entries still sitting in the old single-document schema
+    // into their monthly documents, so nothing recorded before this update gets lost.
+    try{
+      const oldDoc = await db.collection('sections').doc(key).get();
+      const oldEntries = (oldDoc.exists && Array.isArray(oldDoc.data().entries)) ? oldDoc.data().entries : [];
+      if(oldEntries.length){
+        const existingIds = new Set(merged.map(e=>e.id));
+        const newOnes = oldEntries.filter(e=>!existingIds.has(e.id));
+        if(newOnes.length){
+          const byMonth = {};
+          newOnes.forEach(e=>{ const m = monthKeyOf(e); (byMonth[m]=byMonth[m]||[]).push(e); });
+          for(const m of Object.keys(byMonth)){
+            const monthRef = db.collection('sections').doc(key).collection('months').doc(m);
+            const monthDoc = await monthRef.get();
+            const monthEntries = (monthDoc.exists && Array.isArray(monthDoc.data().entries)) ? monthDoc.data().entries : [];
+            await monthRef.set({entries: monthEntries.concat(byMonth[m])});
+          }
+          merged = merged.concat(newOnes);
+        }
+        await db.collection('sections').doc(key).set({entries: firebase.firestore.FieldValue.delete()}, {merge:true});
+      }
+    }catch(migErr){
+      console.warn('legacy migration skipped for', key, migErr);
+    }
+
+    merged.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    sectionCache[key] = merged;
   }catch(e){
     console.warn('loadSection fallback for', key, e);
     const dbKey = 'gbi_section_' + key;
@@ -893,10 +944,19 @@ async function loadSection(key){
   }
   return sectionCache[key];
 }
-async function persistSection(key){
+async function persistSection(key, months){
+  const entries = sectionCache[key] || [];
+  const byMonth = {};
+  entries.forEach(e=>{
+    const m = monthKeyOf(e);
+    (byMonth[m] = byMonth[m] || []).push(e);
+  });
+  const monthsToWrite = (months && months.length) ? months : Object.keys(byMonth);
   try{
     if(!db) throw new Error('Firestore not available');
-    await db.collection('sections').doc(key).set({entries: sectionCache[key]});
+    await Promise.all(monthsToWrite.map(m=>
+      db.collection('sections').doc(key).collection('months').doc(m).set({entries: byMonth[m] || []})
+    ));
   }
   catch(e){
     console.warn('persistSection fallback for', key, e);
@@ -1144,7 +1204,7 @@ $('addBtn').addEventListener('click', async ()=>{
   }
 
   renderTable();
-  persistSection(currentSectionKey).catch(e=>console.warn('background persist failed', e));
+  persistSection(currentSectionKey, [monthKeyOf(entry)]).catch(e=>console.warn('background persist failed', e));
 
   $('f_weight').value=''; $('f_weight_tola').selectedIndex = 0;
   $('f_qty').value='1'; $('f_notes').value=''; $('f_custom').value='';
@@ -1640,8 +1700,9 @@ function renderTable(){
     btn.addEventListener('click', async ()=>{
       if(!confirm('حذف هذا القيد نهائيًا؟')) return;
       const id = btn.getAttribute('data-id');
+      const delEntry = sectionCache[currentSectionKey].find(x=>x.id===id);
       sectionCache[currentSectionKey] = sectionCache[currentSectionKey].filter(x=>x.id!==id);
-      await persistSection(currentSectionKey);
+      await persistSection(currentSectionKey, delEntry ? [monthKeyOf(delEntry)] : undefined);
       renderTable();
       showToast('تم حذف القيد');
     });
