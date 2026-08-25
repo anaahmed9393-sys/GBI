@@ -581,6 +581,7 @@
             <button class="iconbtn dateNavBtn" id="sectionDateTodayBtn">كل التواريخ</button>
           </div>
           <button class="iconbtn" id="printSectionBtn">🖨️ طباعة</button>
+          <button class="iconbtn" id="deleteRangeBtn" style="display:none;">🗑️ حذف فترة</button>
         </div>
       </div>
 
@@ -759,6 +760,49 @@ const memoryDB = new Proxy({}, {
   }
 });
 
+// ============ PENDING SYNC QUEUE ============
+// When a write to Firestore fails (offline/connection hiccup), it's saved locally via memoryDB
+// AND queued here. We keep retrying the queue until it reaches the server, so the change
+// automatically propagates to every device — not just the device that made it.
+const PENDING_KEY = 'gbi_pending_sync_v1';
+function getPendingQueue(){
+  try{ const raw = localStorage.getItem(PENDING_KEY); return raw ? JSON.parse(raw) : []; }
+  catch(e){ return []; }
+}
+function setPendingQueue(q){
+  try{ localStorage.setItem(PENDING_KEY, JSON.stringify(q)); }catch(e){}
+}
+function queuePendingWrite(item){
+  const q = getPendingQueue().filter(x => !(x.type === item.type && x.key === item.key && x.month === item.month));
+  q.push(item);
+  setPendingQueue(q);
+}
+let flushInProgress = false;
+async function flushPendingQueue(){
+  if(flushInProgress || !db) return;
+  const q = getPendingQueue();
+  if(!q.length) return;
+  flushInProgress = true;
+  const remaining = [];
+  for(const item of q){
+    try{
+      if(item.type === 'auth'){
+        await db.collection('meta').doc('auth').set(item.payload);
+      }else if(item.type === 'section'){
+        await db.collection('sections').doc(item.key).collection('months').doc(item.month).set({entries: item.payload});
+      }
+    }catch(e){
+      remaining.push(item); // still unreachable — keep it queued and try again next time
+    }
+  }
+  setPendingQueue(remaining);
+  flushInProgress = false;
+  if(remaining.length < q.length) console.info('gbi: synced', q.length - remaining.length, 'pending change(s) to server');
+}
+window.addEventListener('online', flushPendingQueue);
+setInterval(flushPendingQueue, 20000);
+flushPendingQueue();
+
 /* ================= HELPERS ================= */
 function $(id){return document.getElementById(id);}
 function uid(){return 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);}
@@ -820,7 +864,10 @@ async function saveAuth(auth){
     if(!db) throw new Error('Firestore not available');
     await db.collection('meta').doc('auth').set(auth);
   }
-  catch(e){ memoryDB[AUTH_KEY] = JSON.stringify(auth); }
+  catch(e){
+    memoryDB[AUTH_KEY] = JSON.stringify(auth);
+    queuePendingWrite({type:'auth', key:'auth', payload:auth});
+  }
 }
 
 $('loginBtn').addEventListener('click', doLogin);
@@ -961,6 +1008,9 @@ async function persistSection(key, months){
   catch(e){
     console.warn('persistSection fallback for', key, e);
     memoryDB['gbi_section_' + key] = JSON.stringify(sectionCache[key]);
+    monthsToWrite.forEach(m=>{
+      queuePendingWrite({type:'section', key:key, month:m, payload: byMonth[m] || []});
+    });
   }
 }
 
@@ -1262,6 +1312,7 @@ async function openSection(key){
   });
 
   $('addEntryPanel').style.display = (currentRole === 'manager') ? 'none' : 'block';
+  $('deleteRangeBtn').style.display = (currentRole === 'admin') ? 'inline-flex' : 'none';
 
   $('dashboardView').style.display = 'none';
   $('sectionView').style.display = 'block';
@@ -2059,6 +2110,32 @@ $('printSectionBtn').addEventListener('click', ()=>{
     </table>
   `;
   printFromArea(html);
+});
+
+$('deleteRangeBtn').addEventListener('click', async ()=>{
+  if(currentRole !== 'admin') return;
+  const start = prompt('من تاريخ (YYYY-MM-DD):');
+  if(start === null) return;
+  const end = prompt('إلى تاريخ (YYYY-MM-DD):', start);
+  if(end === null) return;
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+  if(!dateRe.test(start) || !dateRe.test(end) || start > end){
+    alert('التواريخ لازم تكون بصيغة YYYY-MM-DD، وتاريخ البداية قبل أو يساوي تاريخ النهاية.');
+    return;
+  }
+  const entries = sectionCache[currentSectionKey] || [];
+  const toDelete = entries.filter(e => e.dateISO >= start && e.dateISO <= end);
+  if(!toDelete.length){
+    alert('مفيش أي قيود في الفترة دي.');
+    return;
+  }
+  if(!confirm(`هيتم حذف ${toDelete.length} قيد من ${start} إلى ${end} نهائيًا ولا يمكن التراجع. متأكد؟`)) return;
+  const deleteIds = new Set(toDelete.map(e=>e.id));
+  const affectedMonths = new Set(toDelete.map(e=>monthKeyOf(e)));
+  sectionCache[currentSectionKey] = entries.filter(e => !deleteIds.has(e.id));
+  await persistSection(currentSectionKey, [...affectedMonths]);
+  renderTable();
+  showToast(`تم حذف ${toDelete.length} قيد`);
 });
 
 $('printReportBtn').addEventListener('click', ()=>{
