@@ -1412,6 +1412,7 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
     const rawQ = list.reduce((a,e)=>a+e.qty,0);
 
     let w = rawW, q = rawQ;
+    let itemCount = list.length;
     let body;
 
     if(MOVEMENT_OPTIONS[sectionKey]){
@@ -1520,8 +1521,9 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
         const remLabel = sectionKey === 'taghlif'
           ? 'الباقي في التغليف'
           : 'الباقي في ' + sName + ' (رصيد تراكمي)';
-        let remTypeRows = '';
         const remTypeKeys = remByType ? Object.keys(remByType).filter(tk => remByType[tk].qty > 0 || remByType[tk].weight > 0.0005) : [];
+        itemCount = remTypeKeys.length;
+        let remTypeRows = '';
         if(remTypeKeys.length){
           const typeRowsHtml = remTypeKeys.map(tk => `
             <tr>
@@ -1550,7 +1552,7 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
         <div class="kdInnerSummary">
           <div class="kdSumBox"><div class="n">${fmtWeight(w)}</div><div class="l">إجمالي الوزن (جم)</div></div>
           <div class="kdSumBox"><div class="n">${q}</div><div class="l">إجمالي العدد</div></div>
-          <div class="kdSumBox"><div class="n">${list.length}</div><div class="l">عدد الأصناف</div></div>
+          <div class="kdSumBox"><div class="n">${itemCount}</div><div class="l">عدد الأصناف</div></div>
         </div>`;
       body = innerSummary + rowsHtml;
     }else{
@@ -1579,7 +1581,7 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
           <div style="display:flex;gap:10px;flex-shrink:0;">
             <div style="text-align:center;min-width:32px;">
               <div style="font-size:10px;color:var(--muted);white-space:nowrap;">الصنف</div>
-              <div style="font-weight:700;font-size:13px;">${list.length}</div>
+              <div style="font-weight:700;font-size:13px;">${itemCount}</div>
             </div>
             <div style="text-align:center;min-width:32px;">
               <div style="font-size:10px;color:var(--muted);white-space:nowrap;">العدد</div>
