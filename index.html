@@ -958,27 +958,32 @@ async function loadSection(key){
 
     // one-time migration: move any entries still sitting in the old single-document schema
     // into their monthly documents, so nothing recorded before this update gets lost.
-    try{
-      const oldDoc = await db.collection('sections').doc(key).get();
-      const oldEntries = (oldDoc.exists && Array.isArray(oldDoc.data().entries)) ? oldDoc.data().entries : [];
-      if(oldEntries.length){
-        const existingIds = new Set(merged.map(e=>e.id));
-        const newOnes = oldEntries.filter(e=>!existingIds.has(e.id));
-        if(newOnes.length){
-          const byMonth = {};
-          newOnes.forEach(e=>{ const m = monthKeyOf(e); (byMonth[m]=byMonth[m]||[]).push(e); });
-          for(const m of Object.keys(byMonth)){
-            const monthRef = db.collection('sections').doc(key).collection('months').doc(m);
-            const monthDoc = await monthRef.get();
-            const monthEntries = (monthDoc.exists && Array.isArray(monthDoc.data().entries)) ? monthDoc.data().entries : [];
-            await monthRef.set({entries: monthEntries.concat(byMonth[m])});
+    // Skipped on future loads once done, via a local flag, so normal loads don't pay for an extra read.
+    const migratedFlag = 'gbi_migrated_' + key;
+    if(!memoryDB[migratedFlag]){
+      try{
+        const oldDoc = await db.collection('sections').doc(key).get();
+        const oldEntries = (oldDoc.exists && Array.isArray(oldDoc.data().entries)) ? oldDoc.data().entries : [];
+        if(oldEntries.length){
+          const existingIds = new Set(merged.map(e=>e.id));
+          const newOnes = oldEntries.filter(e=>!existingIds.has(e.id));
+          if(newOnes.length){
+            const byMonth = {};
+            newOnes.forEach(e=>{ const m = monthKeyOf(e); (byMonth[m]=byMonth[m]||[]).push(e); });
+            for(const m of Object.keys(byMonth)){
+              const monthRef = db.collection('sections').doc(key).collection('months').doc(m);
+              const monthDoc = await monthRef.get();
+              const monthEntries = (monthDoc.exists && Array.isArray(monthDoc.data().entries)) ? monthDoc.data().entries : [];
+              await monthRef.set({entries: monthEntries.concat(byMonth[m])});
+            }
+            merged = merged.concat(newOnes);
           }
-          merged = merged.concat(newOnes);
+          await db.collection('sections').doc(key).set({entries: firebase.firestore.FieldValue.delete()}, {merge:true});
         }
-        await db.collection('sections').doc(key).set({entries: firebase.firestore.FieldValue.delete()}, {merge:true});
+        memoryDB[migratedFlag] = '1';
+      }catch(migErr){
+        console.warn('legacy migration skipped for', key, migErr);
       }
-    }catch(migErr){
-      console.warn('legacy migration skipped for', key, migErr);
     }
 
     merged.sort((a,b)=>(b.ts||0)-(a.ts||0));
@@ -1023,11 +1028,7 @@ function buildDashCards(){
     const entries = sectionCache[s.key] || [];
     const card = document.createElement('div');
     card.className = 'cardTile';
-    let displayCount = entries.length;
-    if(s.key === 'baraqod'){
-      const todayISO = toLocalISODate(new Date());
-      displayCount = entries.filter(e => e.dateISO === todayISO).length;
-    }
+    const displayCount = entries.length;
     card.innerHTML = `
       <span class="count">${displayCount} قيد</span>
       <span class="ico">${s.icon}</span>
