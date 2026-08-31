@@ -1495,6 +1495,8 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
         remQ = cumRows.length ? cumRows[0].sq : 0;
         remW = cumRows.length ? cumRows[0].sw : 0;
         for(let i=1;i<cumRows.length;i++){ remQ -= cumRows[i].sq; remW -= cumRows[i].sw; }
+        remQ = Math.max(0, remQ);
+        remW = Math.max(0, remW);
 
         // per-type (صنف) net breakdown within this karat, so "الباقي" can be shown split by type too
         remByType = {};
