@@ -1539,7 +1539,12 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
           ? 'الباقي في التغليف'
           : 'الباقي في ' + sName + ' (رصيد تراكمي)';
         const remTypeKeys = remByType ? Object.keys(remByType).filter(tk => remByType[tk].qty > 0 || remByType[tk].weight > 0.0005) : [];
-        itemCount = remTypeKeys.length;
+        if(sectionKey === 'taghlif'){
+          const submittedTypeKeys = new Set(submittedTodayTaghlif.map(e=> e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type));
+          itemCount = submittedTypeKeys.size;
+        }else{
+          itemCount = remTypeKeys.length;
+        }
         let remTypeRows = '';
         if(remTypeKeys.length){
           const typeRowsHtml = remTypeKeys.map(tk => `
