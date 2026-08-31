@@ -1453,6 +1453,9 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
       // يوم بيومه (مش تراكمي)، ومفيش رقم سالب (لو الفرق سالب يبقى 0).
       // For other sections (e.g. damgha): submitted - received/كسر, cumulative up to the selected date.
       let remQ, remW, remByType = null;
+      const submittedTodayTaghlif = list.filter(e=>e.movement==='مسلم للتغليف');
+      const submittedTodayQ = submittedTodayTaghlif.reduce((a,e)=>a+e.qty,0);
+      const submittedTodayW = submittedTodayTaghlif.reduce((a,e)=>a+e.weight*e.qty,0);
       if(sectionKey === 'taghlif'){
         const cumTaghlif = cumEntries.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للتغليف');
         const baraqodAll = sectionCache['baraqod'] || [];
@@ -1518,9 +1521,14 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
         remQ = Object.values(remByType).reduce((a,x)=>a+x.qty, 0);
         remW = Object.values(remByType).reduce((a,x)=>a+x.weight, 0);
       }
-      // فقط الأقسام اللي بتعرض "الباقي" فعليًا تستبدل العدد/الوزن المعروضين بالصافي.
+      // فقط الأقسام اللي بتعرض "الباقي" فعليًا تستبدل العدد/الوزن المعروضين.
+      // التغليف تحديدًا: مسلم للتغليف (اليوم/الفترة المختارة) ناقص الباقي، حسب طلب المستخدم.
+      // باقي الأقسام (زي الدمغة): الباقي الصافي زي ما هو.
       // الباركود (HIDE_REMAINING) بيفضل يعرض أرقامه الحقيقية لليوم/الفترة المختارة، مش صافي تراكمي.
-      if(!HIDE_REMAINING.has(sectionKey)){
+      if(sectionKey === 'taghlif'){
+        q = submittedTodayQ - remQ;
+        w = submittedTodayW - remW;
+      }else if(!HIDE_REMAINING.has(sectionKey)){
         q = remQ;
         w = remW;
       }
