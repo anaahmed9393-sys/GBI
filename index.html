@@ -1389,7 +1389,7 @@ function buildBreakdownHtml(sectionKey, entries, dateLabel, cumulativeEntries){
           q -= (cumGroups[i][k]||{}).qty || 0;
           w -= (cumGroups[i][k]||{}).weight || 0;
         }
-        remT[k] = {qty:q, weight:w};
+        remT[k] = {qty: Math.max(0, q), weight: Math.max(0, w)};
       });
       const sName = (SECTIONS.find(x=>x.key===sectionKey)||{}).name || '';
       html += movementBox('الباقي في ' + sName + ' (رصيد تراكمي)', remT, dateLabel);
