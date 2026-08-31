@@ -1513,6 +1513,10 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
           remByType[tk].qty = Math.max(0, remByType[tk].qty);
           remByType[tk].weight = Math.max(0, remByType[tk].weight);
         });
+        // إجمالي "الباقي" لازم يتساوى مع مجموع تفاصيل الأصناف نفسها، مش رقم منفصل بيتحسب لوحده،
+        // عشان صنف برصيد سالب (بسبب حذف قيود قديمة مثلاً) ميسحبش رصيد صنف تاني موجود فعليًا لتحت الصفر.
+        remQ = Object.values(remByType).reduce((a,x)=>a+x.qty, 0);
+        remW = Object.values(remByType).reduce((a,x)=>a+x.weight, 0);
       }
       // فقط الأقسام اللي بتعرض "الباقي" فعليًا تستبدل العدد/الوزن المعروضين بالصافي.
       // الباركود (HIDE_REMAINING) بيفضل يعرض أرقامه الحقيقية لليوم/الفترة المختارة، مش صافي تراكمي.
