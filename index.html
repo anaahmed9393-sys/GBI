@@ -1458,10 +1458,6 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
         const baraqodAll = sectionCache['baraqod'] || [];
         const baraqodForCompare = dayISO ? baraqodAll.filter(e=>e.dateISO<=dayISO) : baraqodAll;
         const cumBaraqod = baraqodForCompare.filter(e=>String(e.karat)===karatVal && e.movement==='مسلم للباركود');
-        const rawRemQ = cumTaghlif.reduce((a,e)=>a+e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.qty,0);
-        const rawRemW = cumTaghlif.reduce((a,e)=>a+e.weight*e.qty,0) - cumBaraqod.reduce((a,e)=>a+e.weight*e.qty,0);
-        remQ = Math.max(0, rawRemQ);
-        remW = Math.max(0, rawRemW);
 
         // per-type (صنف) breakdown: مسلم للتغليف - مسلم للباركود لكل صنف (رصيد تراكمي)، برضو مش سالب
         const typeKey = e => e.type === 'توله' ? ('توله ' + e.weight + ' جرام') : e.type;
@@ -1486,6 +1482,10 @@ function buildKaratDetails(sectionKey, entries, cumulativeEntries, dayISO){
           const bQ = (baraqodByType[tk]||{}).qty || 0, bW = (baraqodByType[tk]||{}).weight || 0;
           remByType[tk] = {qty: Math.max(0, tQ-bQ), weight: Math.max(0, tW-bW)};
         });
+        // إجمالي "الباقي" لازم يتساوى مع مجموع تفاصيل الأصناف نفسها، مش رقم منفصل بيتحسب لوحده،
+        // عشان صنف برصيد سالب ميسحبش رصيد صنف تاني موجود فعليًا لتحت الصفر.
+        remQ = Object.values(remByType).reduce((a,x)=>a+x.qty, 0);
+        remW = Object.values(remByType).reduce((a,x)=>a+x.weight, 0);
       }else{
         const cumList = cumEntries.filter(e=>String(e.karat)===karatVal);
         const cumRows = opts.map(o=>{
