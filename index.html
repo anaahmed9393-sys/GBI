@@ -718,6 +718,9 @@ let db = null;
 try{
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
+  db.enablePersistence({synchronizeTabs:true}).catch(e=>{
+    console.warn('Firestore offline persistence not enabled:', e.code || e);
+  });
 }catch(e){
   console.warn('Firebase init failed (will use local fallback until Firebase is reachable):', e);
 }
@@ -1025,12 +1028,12 @@ function buildDashCards(){
   const grid = $('dashGrid');
   grid.innerHTML = '';
   SECTIONS.forEach(s=>{
-    const entries = sectionCache[s.key] || [];
+    const entries = sectionCache[s.key];
+    const isLoading = entries === undefined;
     const card = document.createElement('div');
     card.className = 'cardTile';
-    const displayCount = entries.length;
     card.innerHTML = `
-      <span class="count">${displayCount} قيد</span>
+      <span class="count">${isLoading ? 'جارٍ التحميل...' : entries.length + ' قيد'}</span>
       <span class="ico">${s.icon}</span>
       <h3 class="display">${s.name}</h3>
       <p>${s.desc}</p>
@@ -2117,13 +2120,20 @@ $('printSectionBtn').addEventListener('click', ()=>{
 
 $('deleteRangeBtn').addEventListener('click', async ()=>{
   if(currentRole !== 'admin') return;
-  const start = prompt('من تاريخ (YYYY-MM-DD):');
-  if(start === null) return;
-  const end = prompt('إلى تاريخ (YYYY-MM-DD):', start);
-  if(end === null) return;
-  const dateRe = /^\d{4}-\d{2}-\d{2}$/;
-  if(!dateRe.test(start) || !dateRe.test(end) || start > end){
-    alert('التواريخ لازم تكون بصيغة YYYY-MM-DD، وتاريخ البداية قبل أو يساوي تاريخ النهاية.');
+  function parseDMY(str){
+    const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((str||'').trim());
+    if(!m) return null;
+    const day = m[1].padStart(2,'0'), month = m[2].padStart(2,'0'), year = m[3];
+    return `${year}-${month}-${day}`;
+  }
+  const startRaw = prompt('من تاريخ (مثال: 8/8/2030):');
+  if(startRaw === null) return;
+  const endRaw = prompt('إلى تاريخ (مثال: 8/8/2030):');
+  if(endRaw === null) return;
+  const start = parseDMY(startRaw);
+  const end = parseDMY(endRaw);
+  if(!start || !end || start > end){
+    alert('التواريخ لازم تكون بصيغة يوم/شهر/سنة (مثال: 8/8/2030)، وتاريخ البداية قبل أو يساوي تاريخ النهاية.');
     return;
   }
   const entries = sectionCache[currentSectionKey] || [];
@@ -2132,7 +2142,7 @@ $('deleteRangeBtn').addEventListener('click', async ()=>{
     alert('مفيش أي قيود في الفترة دي.');
     return;
   }
-  if(!confirm(`هيتم حذف ${toDelete.length} قيد من ${start} إلى ${end} نهائيًا ولا يمكن التراجع. متأكد؟`)) return;
+  if(!confirm(`هيتم حذف ${toDelete.length} قيد من ${startRaw} إلى ${endRaw} نهائيًا ولا يمكن التراجع. متأكد؟`)) return;
   const deleteIds = new Set(toDelete.map(e=>e.id));
   const affectedMonths = new Set(toDelete.map(e=>monthKeyOf(e)));
   sectionCache[currentSectionKey] = entries.filter(e => !deleteIds.has(e.id));
