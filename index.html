@@ -1254,6 +1254,28 @@ function updateNotifBadge(){
   b.classList.toggle('show', notifCount > 0);
   updateAppIconBadge(notifCount);
 }
+
+function ensureNotifPermission(){
+  if('Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission().catch(()=>{});
+  }
+}
+ensureNotifPermission();
+
+function fireSystemNotification(entry, sectionKey){
+  if(!('Notification' in window) || Notification.permission !== 'granted') return;
+  const sec = SECTIONS.find(s=>s.key===sectionKey);
+  const secName = sec ? sec.name : '';
+  try{
+    const n = new Notification('تم تسجيل قيد جديد', {
+      body: secName ? ('قسم: ' + secName) : 'تم إضافة قيد جديد في النظام',
+      icon: originalFaviconHref || undefined,
+      tag: 'gbi-new-entry',
+      renotify: true
+    });
+    n.onclick = () => { window.focus(); n.close(); };
+  }catch(e){}
+}
 $('notifBtn').addEventListener('click', ()=>{
   notifCount = 0;
   updateNotifBadge();
@@ -1326,6 +1348,7 @@ $('addBtn').addEventListener('click', async ()=>{
     sectionCache[currentSectionKey].unshift(entry);
     notifCount++;
     updateNotifBadge();
+    fireSystemNotification(entry, currentSectionKey);
   }
 
   renderTable();
