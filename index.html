@@ -1279,6 +1279,16 @@ function fireSystemNotification(entry, sectionKey){
 $('notifBtn').addEventListener('click', ()=>{
   notifCount = 0;
   updateNotifBadge();
+  if('Notification' in window){
+    if(Notification.permission === 'default'){
+      Notification.requestPermission().then(perm=>{
+        if(perm === 'granted') showToast('تم تفعيل إشعارات النظام بنجاح');
+        else if(perm === 'denied') showToast('تم رفض إذن الإشعارات — لن تظهر إشعارات النظام');
+      }).catch(()=>{});
+    }else if(Notification.permission === 'denied'){
+      showToast('الإشعارات محظورة من إعدادات المتصفح، يجب تفعيلها يدويًا');
+    }
+  }
 });
 
 $('addBtn').addEventListener('click', async ()=>{
